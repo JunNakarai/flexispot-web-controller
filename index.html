@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlexiSpot Controller</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>    <div class="container">
+        <header>
+            <h1>FlexiSpot Controller</h1>
+        </header>
+
+        <main>
+            <!-- 接続状態セクション -->
+            <section class="connection-section">
+                <div class="status-indicator">
+                    <span id="connection-status" class="status-dot disconnected"></span>
+                    <span id="connection-text">未接続</span>
+                </div>
+                <div class="connection-controls">
+                    <button id="connect-btn" class="btn btn-primary">接続</button>
+                    <button id="disconnect-btn" class="btn btn-secondary" disabled>切断</button>
+                </div>
+            </section>
+
+            <!-- プリセットボタンセクション -->
+            <section class="preset-section">
+                <div class="preset-grid">
+                    <button id="preset1-btn" class="btn btn-preset" data-preset="1">
+                        プリセット1
+                    </button>
+                    <button id="preset2-btn" class="btn btn-preset" data-preset="2">
+                        プリセット2
+                    </button>
+                    <button id="sitting-btn" class="btn btn-preset" data-preset="sitting">
+                        シッティング
+                    </button>
+                    <button id="standing-btn" class="btn btn-preset" data-preset="standing">
+                        スタンド
+                    </button>
+                </div>
+            </section>
+
+            <!-- 手動制御セクション -->
+            <section class="manual-section">
+                <div class="manual-controls">
+                    <button id="up-btn" class="btn btn-control btn-up">
+                        ⬆️ UP
+                    </button>
+                    <button id="down-btn" class="btn btn-control btn-down">
+                        ⬇️ DOWN
+                    </button>
+                </div>
+            </section>
+
+            <!-- ステータス表示 -->
+            <section class="status-section">
+                <div id="status-message" class="status-message">
+                    Web Serial APIを使用してFlexiSpotデスクを制御します。<br>
+                    HTTPS環境とChrome/Edgeブラウザが必要です。
+                </div>
+            </section>        </main>
+    </div>
+
+    <!-- バージョン情報（右下固定） -->
+    <div class="version-info">
+        <span id="version">v1.1.0</span>
+        <span class="build-date">Build: 2025-06-18</span>
+    </div>
+
+    <!-- エラーモーダル -->
+    <div id="error-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3>エラー</h3>
+            <p id="error-message"></p>
+            <button id="error-close-btn" class="btn btn-primary">OK</button>
+        </div>
+    </div>
+
+    <script src="serial-protocol.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
