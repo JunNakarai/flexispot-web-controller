@@ -39,7 +39,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Install Claude Code CLI
-          npm install -g @anthropic/claude-code
+          npm install -g @anthropic-ai/claude-code
           
           # Configure Claude Code with GitHub integration
           claude-code --github-integration \
