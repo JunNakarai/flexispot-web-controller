@@ -1,48 +1,36 @@
-name: Claude Code AI Assistant
+name: Claude PR Assistant
 
 on:
   issue_comment:
     types: [created]
+  pull_request_review_comment:
+    types: [created]
   issues:
-    types: [opened, labeled]
-  pull_request:
-    types: [opened, synchronize]
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
-  claude-assist:
-    if: contains(github.event.comment.body, '@claude') || (github.event_name == 'issues' && github.event.action == 'opened')
+  claude-code-action:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
     runs-on: ubuntu-latest
-    
     permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          
-      - name: Install dependencies
-        run: |
-          if [ -f "package.json" ]; then
-            npm install
-          fi
-          
-      - name: Run Claude Code
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Install Claude Code CLI
-          npm install -g @anthropic-ai/claude-code
-          
-          # Configure Claude Code with GitHub integration
-          claude-code --github-integration \
-            --repo="${{ github.repository }}" \
-            --issue="${{ github.event.issue.number || github.event.pull_request.number }}" \
-            --comment="${{ github.event.comment.body || github.event.issue.body }}"
+          fetch-depth: 1
+
+      - name: Run Claude PR Action
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          timeout_minutes: "60"
