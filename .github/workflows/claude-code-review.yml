@@ -37,9 +37,10 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           
-          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4)
-          # model: "claude-opus-4-20250514"
-          
+          # Optional: Specify model (defaults to Claude Sonnet 4)
+          # model: "claude-sonnet-4-20250514"
+          model: "claude-3-7-sonnet-20250219"
+
           # Direct prompt for automated review (no @claude mention needed)
           direct_prompt: |
             Please review this pull request and provide feedback on:
