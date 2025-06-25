@@ -61,6 +61,7 @@ jobs:
         uses: grll/claude-code-base-action@beta
         with:
           prompt: ${{ steps.context.outputs.prompt }}
+          model: "claude-3-7-sonnet-20250219"
           allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool,Write,Edit"
           max_turns: "10"
           use_oauth: "true"
