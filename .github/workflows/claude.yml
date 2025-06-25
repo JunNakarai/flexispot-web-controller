@@ -1,63 +1,191 @@
-# Using a direct prompt
-- name: Run Claude Code with direct prompt
-  uses: grll/claude-code-base-action@beta
-  with:
-    prompt: "Your prompt here"
-    allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool"
-    use_oauth: "true"
-    claude_access_token: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
-    claude_refresh_token: ${{ secrets.CLAUDE_REFRESH_TOKEN }}
-    claude_expires_at: ${{ secrets.CLAUDE_EXPIRES_AT }}
+name: Claude Code Actions
 
-# Or using a prompt from a file
-- name: Run Claude Code with prompt file
-  uses: grll/claude-code-base-action@beta
-  with:
-    prompt_file: "/path/to/prompt.txt"
-    allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool"
-    use_oauth: "true"
-    claude_access_token: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
-    claude_refresh_token: ${{ secrets.CLAUDE_REFRESH_TOKEN }}
-    claude_expires_at: ${{ secrets.CLAUDE_EXPIRES_AT }}
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened, synchronize]
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Prompt for Claude'
+        required: true
+        default: 'Please review this codebase and suggest improvements'
+      create_pr:
+        description: 'Create PR for changes'
+        required: false
+        default: false
+        type: boolean
 
-# Or limiting the conversation turns
-- name: Run Claude Code with limited turns
-  uses: grll/claude-code-base-action@beta
-  with:
-    prompt: "Your prompt here"
-    allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool"
-    max_turns: "5" # Limit conversation to 5 turns
-    use_oauth: "true"
-    claude_access_token: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
-    claude_refresh_token: ${{ secrets.CLAUDE_REFRESH_TOKEN }}
-    claude_expires_at: ${{ secrets.CLAUDE_EXPIRES_AT }}
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
 
-# Using custom system prompts
-- name: Run Claude Code with custom system prompt
-  uses: grll/claude-code-base-action@beta
-  with:
-    prompt: "Build a REST API"
-    system_prompt: "You are a senior backend engineer. Focus on security, performance, and maintainability."
-    allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool"
-    anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+jobs:
+  claude:
+    if: |
+      github.event_name == 'workflow_dispatch' || 
+      contains(github.event.comment.body, '@claude') ||
+      (github.event_name == 'issues' && github.event.action == 'opened') ||
+      (github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'synchronize'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Determine prompt and context
+        id: context
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "prompt=${{ github.event.inputs.prompt }}" >> $GITHUB_OUTPUT
+            echo "create_pr=${{ github.event.inputs.create_pr }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "issue_comment" ]; then
+            echo "prompt=${{ github.event.comment.body }}" >> $GITHUB_OUTPUT
+            echo "create_pr=false" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "issues" ]; then
+            echo "prompt=Please analyze this issue and suggest a solution: ${{ github.event.issue.title }} - ${{ github.event.issue.body }}" >> $GITHUB_OUTPUT
+            echo "create_pr=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "prompt=Please review this PR: ${{ github.event.pull_request.title }}. Focus on code quality, potential bugs, and performance issues." >> $GITHUB_OUTPUT
+            echo "create_pr=false" >> $GITHUB_OUTPUT
+          fi
 
-# Or appending to the default system prompt
-- name: Run Claude Code with appended system prompt
-  uses: grll/claude-code-base-action@beta
-  with:
-    prompt: "Create a database schema"
-    append_system_prompt: "After writing code, be sure to code review yourself."
-    allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool"
-    anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: Run Claude Code
+        id: claude
+        uses: grll/claude-code-base-action@beta
+        with:
+          prompt: ${{ steps.context.outputs.prompt }}
+          allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool,Write,Edit"
+          max_turns: "10"
+          use_oauth: "true"
+          claude_access_token: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
+          claude_refresh_token: ${{ secrets.CLAUDE_REFRESH_TOKEN }}
+          claude_expires_at: ${{ secrets.CLAUDE_EXPIRES_AT }}
 
-# Using custom environment variables
-- name: Run Claude Code with custom environment variables
-  uses: grll/claude-code-base-action@beta
-  with:
-    prompt: "Deploy to staging environment"
-    claude_env: |
-      ENVIRONMENT: staging
-      API_URL: https://api-staging.example.com
-      DEBUG: true
-    allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool"
-    anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+      - name: Comment Claude Response
+        if: steps.claude.outputs.conclusion == 'success' && (github.event_name == 'issue_comment' || github.event_name == 'issues' || github.event_name == 'pull_request')
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const executionFile = '${{ steps.claude.outputs.execution_file }}';
+            
+            if (!fs.existsSync(executionFile)) {
+              console.log('No execution file found');
+              return;
+            }
+            
+            const executionLog = JSON.parse(fs.readFileSync(executionFile, 'utf8'));
+            
+            // Extract the last assistant message
+            let response = '';
+            for (let i = executionLog.length - 1; i >= 0; i--) {
+              if (executionLog[i].role === 'assistant') {
+                response = executionLog[i].content;
+                break;
+              }
+            }
+            
+            if (response) {
+              const issueNumber = context.issue?.number || context.payload.pull_request?.number;
+              if (issueNumber) {
+                await github.rest.issues.createComment({
+                  issue_number: issueNumber,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: "## 🤖 Claude Analysis\\n\\n" + response + "\\n\\n*Generated by Claude Code*"
+                });
+              }
+            }
+
+      - name: Configure Git
+        if: steps.claude.outputs.conclusion == 'success' && steps.context.outputs.create_pr == 'true'
+        run: |
+          git config --global user.name "claude-bot[bot]"
+          git config --global user.email "claude-bot[bot]@users.noreply.github.com"
+
+      - name: Create PR for Changes
+        if: steps.claude.outputs.conclusion == 'success' && steps.context.outputs.create_pr == 'true'
+        run: |
+          # Check if there are any changes
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No changes detected, skipping PR creation"
+            exit 0
+          fi
+          
+          # Create a new branch
+          BRANCH_NAME="claude-changes-$(date +%s)"
+          git checkout -b "$BRANCH_NAME"
+          
+          # Add and commit changes
+          git add .
+          git commit -m "🤖 Changes suggested by Claude
+
+          Generated in response to: ${{ github.event.issue.title || github.event.inputs.prompt }}"
+          
+          # Push the branch
+          git push origin "$BRANCH_NAME"
+          
+          # Store branch name for next step
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+
+      - name: Create Pull Request
+        if: steps.claude.outputs.conclusion == 'success' && steps.context.outputs.create_pr == 'true' && env.BRANCH_NAME
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              const title = "🤖 Claude Suggested Changes";
+              const issueTitle = "${{ github.event.issue.title || github.event.inputs.prompt }}";
+              const issueBody = "${{ github.event.issue.body || github.event.inputs.prompt }}";
+              const body = \`## Claude Suggested Changes
+
+            This PR contains changes suggested by Claude in response to:
+            \${issueTitle}
+
+            ### Original Request:
+            \${issueBody}
+
+            *Generated by Claude Code*\`;
+
+              const pr = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                head: process.env.BRANCH_NAME,
+                base: 'main',
+                body: body
+              });
+              
+              console.log(\`Created PR #\${pr.data.number}: \${pr.data.html_url}\`);
+              
+              // Comment on original issue if it exists
+              if (context.issue?.number) {
+                await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: \`🤖 I've created PR #\${pr.data.number} with suggested changes: \${pr.data.html_url}\`
+                });
+              }
+              
+            } catch (error) {
+              console.error('Error creating PR:', error);
+              // Comment about the error if possible
+              if (context.issue?.number) {
+                await github.rest.issues.createComment({
+                  issue_number: context.issue.number,
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  body: \`❌ Failed to create PR: \${error.message}\`
+                });
+              }
+            }
