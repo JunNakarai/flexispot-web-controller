@@ -1,192 +1,179 @@
-name: Claude Code Actions
+name: Claude Code
 
 on:
   issue_comment:
     types: [created]
+  pull_request_review_comment:
+    types: [created]
   issues:
-    types: [opened]
-  pull_request:
-    types: [opened, synchronize]
-  workflow_dispatch:
-    inputs:
-      prompt:
-        description: 'Prompt for Claude'
-        required: true
-        default: 'Please review this codebase and suggest improvements'
-      create_pr:
-        description: 'Create PR for changes'
-        required: false
-        default: false
-        type: boolean
-
-permissions:
-  contents: write
-  issues: write
-  pull-requests: write
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
   claude:
     if: |
-      github.event_name == 'workflow_dispatch' || 
-      contains(github.event.comment.body, '@claude') ||
-      (github.event_name == 'issues' && github.event.action == 'opened') ||
-      (github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'synchronize'))
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: write
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
       
-      - name: Determine prompt and context
+      # GitHub のコンテキスト情報を準備
+      - name: Prepare GitHub context
         id: context
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "prompt=${{ github.event.inputs.prompt }}" >> $GITHUB_OUTPUT
-            echo "create_pr=${{ github.event.inputs.create_pr }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "issue_comment" ]; then
-            echo "prompt=${{ github.event.comment.body }}" >> $GITHUB_OUTPUT
-            echo "create_pr=false" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "issues" ]; then
-            echo "prompt=Please analyze this issue and suggest a solution: ${{ github.event.issue.title }} - ${{ github.event.issue.body }}" >> $GITHUB_OUTPUT
-            echo "create_pr=true" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "prompt=Please review this PR: ${{ github.event.pull_request.title }}. Focus on code quality, potential bugs, and performance issues." >> $GITHUB_OUTPUT
-            echo "create_pr=false" >> $GITHUB_OUTPUT
+          echo "event_name=${{ github.event_name }}" >> $GITHUB_OUTPUT
+          if [[ "${{ github.event_name }}" == "issues" ]]; then
+            echo "issue_title<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "issue_body<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ github.event.issue.body }}" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "issue_comment" ]]; then
+            echo "comment_body<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ github.event.comment.body }}" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "issue_title<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
           fi
-
+      
       - name: Run Claude Code
         id: claude
         uses: grll/claude-code-base-action@beta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          prompt: ${{ steps.context.outputs.prompt }}
+          prompt: |
+            あなたはFlexiSpot Web Controllerプロジェクト（Web Serial APIを使用したFlexiSpotデスク制御アプリ）の開発支援AIです。
+            必ず日本語で回答してください。
+            
+            プロジェクト概要:
+            - Web Serial APIを使用してFlexiSpotの昇降デスクを制御するWebアプリケーション
+            - HTML/CSS/JavaScriptで構築
+            - シリアル通信プロトコルでデスクの高さ制御やプリセット操作を実行
+            - HTTPS環境とChrome/Edgeブラウザが必要
+            
+            以下のGitHubイベントに対応してください：
+            
+            イベント種類: ${{ steps.context.outputs.event_name }}
+            
+            ${{ github.event_name == 'issues' && format('
+            ## Issue情報
+            - Issue番号: #{0}
+            - タイトル: {1}
+            - 内容:
+            {2}
+            
+            このissueの内容を分析し、FlexiSpot Web Controllerに関する具体的なアドバイスや解決策を提案してください。', github.event.issue.number, github.event.issue.title, github.event.issue.body) || '' }}
+            
+            ${{ github.event_name == 'issue_comment' && format('
+            ## コメント情報
+            - Issue番号: #{0}
+            - Issue タイトル: {1}
+            - コメント内容:
+            {2}
+            
+            このコメントの要求に対してFlexiSpot Web Controllerの文脈で具体的に回答してください。', github.event.issue.number, github.event.issue.title, github.event.comment.body) || '' }}
+            
+            回答時の注意事項:
+            - Web Serial API、シリアル通信、FlexiSpotデスクに関する技術的内容を日本語で分かりやすく説明
+            - HTML/CSS/JavaScriptの改善提案を具体的に行う
+            - セキュリティやブラウザ互換性を考慮した提案をする
+            - 必要に応じてコードやファイルを確認・修正提案
+            - デスク制御の安全性と信頼性を重視した回答
+          allowed_tools: "Bash,View,GlobTool,GrepTool,BatchTool,Edit,Replace,Write,GitHubAPI"
           model: "claude-3-7-sonnet-20250219"
-          allowed_tools: "Bash(git:*),View,GlobTool,GrepTool,BatchTool,Write,Edit"
-          max_turns: "10"
           use_oauth: "true"
           claude_access_token: ${{ secrets.CLAUDE_ACCESS_TOKEN }}
           claude_refresh_token: ${{ secrets.CLAUDE_REFRESH_TOKEN }}
           claude_expires_at: ${{ secrets.CLAUDE_EXPIRES_AT }}
+          timeout_minutes: "15"
 
-      - name: Comment Claude Response
-        if: steps.claude.outputs.conclusion == 'success' && (github.event_name == 'issue_comment' || github.event_name == 'issues' || github.event_name == 'pull_request')
+      # Claude の回答を GitHub issue/PR にコメントとして投稿
+      - name: Post Claude response as comment
+        if: steps.claude.outputs.conclusion == 'success'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
+            
+            // Claude の実行結果ファイルを読み込み
             const executionFile = '${{ steps.claude.outputs.execution_file }}';
             
-            if (!fs.existsSync(executionFile)) {
-              console.log('No execution file found');
-              return;
-            }
-            
-            const executionLog = JSON.parse(fs.readFileSync(executionFile, 'utf8'));
-            
-            // Extract the last assistant message
-            let response = '';
-            for (let i = executionLog.length - 1; i >= 0; i--) {
-              if (executionLog[i].role === 'assistant') {
-                response = executionLog[i].content;
-                break;
-              }
-            }
-            
-            if (response) {
-              const issueNumber = context.issue?.number || context.payload.pull_request?.number;
-              if (issueNumber) {
-                await github.rest.issues.createComment({
-                  issue_number: issueNumber,
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  body: "## 🤖 Claude Analysis\\n\\n" + response + "\\n\\n*Generated by Claude Code*"
-                });
-              }
-            }
-
-      - name: Configure Git
-        if: steps.claude.outputs.conclusion == 'success' && steps.context.outputs.create_pr == 'true'
-        run: |
-          git config --global user.name "claude-bot[bot]"
-          git config --global user.email "claude-bot[bot]@users.noreply.github.com"
-
-      - name: Create PR for Changes
-        if: steps.claude.outputs.conclusion == 'success' && steps.context.outputs.create_pr == 'true'
-        run: |
-          # Check if there are any changes
-          if [ -z "$(git status --porcelain)" ]; then
-            echo "No changes detected, skipping PR creation"
-            exit 0
-          fi
-          
-          # Create a new branch
-          BRANCH_NAME="claude-changes-$(date +%s)"
-          git checkout -b "$BRANCH_NAME"
-          
-          # Add and commit changes
-          git add .
-          git commit -m "🤖 Changes suggested by Claude
-
-          Generated in response to: ${{ github.event.issue.title || github.event.inputs.prompt }}"
-          
-          # Push the branch
-          git push origin "$BRANCH_NAME"
-          
-          # Store branch name for next step
-          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
-
-      - name: Create Pull Request
-        if: steps.claude.outputs.conclusion == 'success' && steps.context.outputs.create_pr == 'true' && env.BRANCH_NAME
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
             try {
-              const title = "🤖 Claude Suggested Changes";
-              const issueTitle = "${{ github.event.issue.title || github.event.inputs.prompt }}";
-              const issueBody = "${{ github.event.issue.body || github.event.inputs.prompt }}";
-              const body = \`## Claude Suggested Changes
-
-            This PR contains changes suggested by Claude in response to:
-            \${issueTitle}
-
-            ### Original Request:
-            \${issueBody}
-
-            *Generated by Claude Code*\`;
-
-              const pr = await github.rest.pulls.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: title,
-                head: process.env.BRANCH_NAME,
-                base: 'main',
-                body: body
-              });
+              const executionLog = JSON.parse(fs.readFileSync(executionFile, 'utf8'));
               
-              console.log(\`Created PR #\${pr.data.number}: \${pr.data.html_url}\`);
-              
-              // Comment on original issue if it exists
-              if (context.issue?.number) {
-                await github.rest.issues.createComment({
-                  issue_number: context.issue.number,
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  body: \`🤖 I've created PR #\${pr.data.number} with suggested changes: \${pr.data.html_url}\`
-                });
+              // 最後のアシスタントメッセージを取得
+              let claudeResponse = '';
+              for (let i = executionLog.length - 1; i >= 0; i--) {
+                if (executionLog[i].type === 'assistant' && executionLog[i].message && executionLog[i].message.content) {
+                  const content = executionLog[i].message.content;
+                  if (Array.isArray(content)) {
+                    // content が配列の場合、text タイプのコンテンツを探す
+                    for (const item of content) {
+                      if (item.type === 'text') {
+                        claudeResponse = item.text;
+                        break;
+                      }
+                    }
+                  } else if (typeof content === 'string') {
+                    claudeResponse = content;
+                  }
+                  if (claudeResponse) break;
+                }
               }
               
+              if (claudeResponse) {
+                // GitHub issue または PR comment を投稿
+                let targetNumber;
+                let commentBody = `## 🤖 Claude からの回答\n\n${claudeResponse}\n\n---\n*Generated by Claude Code*`;
+                
+                if (context.eventName === 'issues') {
+                  targetNumber = context.issue.number;
+                } else if (context.eventName === 'issue_comment') {
+                  targetNumber = context.issue.number;
+                } else if (context.eventName === 'pull_request_review_comment' || context.eventName === 'pull_request_review') {
+                  targetNumber = context.issue.number;
+                }
+                
+                if (targetNumber) {
+                  await github.rest.issues.createComment({
+                    issue_number: targetNumber,
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    body: commentBody
+                  });
+                  console.log('Claude response posted successfully');
+                } else {
+                  console.log('Could not determine target issue/PR number');
+                }
+              } else {
+                console.log('No Claude response found in execution log');
+              }
             } catch (error) {
-              console.error('Error creating PR:', error);
-              // Comment about the error if possible
-              if (context.issue?.number) {
-                await github.rest.issues.createComment({
-                  issue_number: context.issue.number,
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  body: \`❌ Failed to create PR: \${error.message}\`
-                });
+              console.error('Error processing Claude response:', error);
+              console.log('Execution file content preview:');
+              try {
+                const content = fs.readFileSync(executionFile, 'utf8');
+                console.log(content.substring(0, 1000) + '...');
+              } catch (readError) {
+                console.error('Could not read execution file:', readError);
               }
             }
