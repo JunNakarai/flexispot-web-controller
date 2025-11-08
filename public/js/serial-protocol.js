@@ -22,7 +22,9 @@ class FlexiSpotSerial {
         this.commandInterval = 108;
         
         // コマンド定義
+        // 参考文献: https://github.com/iMicknl/LoctekMotion_IoT
         this.commands = {
+            WAKE_UP: [0x9b, 0x06, 0x02, 0x00, 0x00, 0x6c, 0xa1, 0x9d], // 画面をアクティブにする（高さデータ取得に必要）
             UP: [0x9b, 0x06, 0x02, 0x01, 0x00, 0xfc, 0xa0, 0x9d],
             DOWN: [0x9b, 0x06, 0x02, 0x02, 0x00, 0x0c, 0xa0, 0x9d],
             PRESET1: [0x9b, 0x06, 0x02, 0x04, 0x00, 0xac, 0xa3, 0x9d],
@@ -35,6 +37,7 @@ class FlexiSpotSerial {
         this.onConnectionChange = null;
         this.onError = null;
         this.onStatusChange = null;
+        this.onHeightChange = null;
     }
     
     /**
@@ -95,6 +98,18 @@ class FlexiSpotSerial {
             
             // 受信データの監視を開始
             this.startReading();
+            
+            // Wake Upコマンドを送信して画面をアクティブ化（高さデータ取得のため）
+            // 参考文献: https://github.com/iMicknl/LoctekMotion_IoT
+            // コントロールボックスは「画面がアクティブ」な時だけ高さデータをブロードキャストする
+            setTimeout(async () => {
+                try {
+                    await this.sendCommand('WAKE_UP');
+                    console.log('[DEBUG] Wake Upコマンドを送信しました');
+                } catch (error) {
+                    console.error('[DEBUG] Wake Upコマンド送信エラー:', error);
+                }
+            }, 500); // 接続後500ms待ってから送信
             
         } catch (error) {
             console.error('Connection error:', error);
@@ -184,13 +199,17 @@ class FlexiSpotSerial {
      */
     async startReading() {
         try {
+            console.log('[DEBUG] 受信監視を開始しました');
             while (this.isConnected && this.reader) {
                 const { value, done } = await this.reader.read();
-                if (done) break;
+                if (done) {
+                    console.log('[DEBUG] 読み取りストリームが終了しました');
+                    break;
+                }
                 
                 // 受信データの処理（バッファオーバーラン対策）
                 if (value && value.length > 0) {
-                    console.log('Received:', Array.from(value));
+                    console.log('[DEBUG] データ受信:', value.length, 'バイト');
                     // 受信データを即座に処理してバッファをクリア
                     this.processReceivedData(value);
                 }
@@ -201,7 +220,7 @@ class FlexiSpotSerial {
         } catch (error) {
             // 切断時の正常なエラーは無視
             if (this.isConnected && !error.message.includes('canceled')) {
-                console.error('Reading error:', error);
+                console.error('[DEBUG] 読み取りエラー:', error);
                 if (this.onError) {
                     this.onError('受信エラー: ' + error.message);
                 }
@@ -211,25 +230,67 @@ class FlexiSpotSerial {
     
     /**
      * 受信データを処理
+     * 参考文献: https://github.com/iMicknl/LoctekMotion_IoT
      */
     processReceivedData(data) {
         // FlexiSpotからの応答データの処理
-        // 高さ情報や状態情報が含まれる場合があります
         const dataArray = Array.from(data);
+        
+        // デバッグ: 受信したデータをすべてログ出力
+        console.log('[DEBUG] 受信データ:', dataArray.map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+        console.log('[DEBUG] データ長:', dataArray.length);
         
         // データ長が適切かチェック
         if (dataArray.length >= 8) {
             // FlexiSpotの標準応答パケット形式をチェック
             if (dataArray[0] === 0x9b && dataArray[1] === 0x06) {
-                // 高さ情報の処理（例：バイト4-5が高さデータ）
-                const height = (dataArray[4] << 8) | dataArray[5];
-                console.log('Desk height:', height);
+                console.log('[DEBUG] 有効なパケット形式を検出');
+                console.log('[DEBUG] パケット詳細:', {
+                    start: '0x' + dataArray[0].toString(16),
+                    length: '0x' + dataArray[1].toString(16),
+                    type: '0x' + dataArray[2].toString(16),
+                    payload1: '0x' + dataArray[3].toString(16),
+                    payload2: '0x' + dataArray[4].toString(16),
+                    checksum1: '0x' + dataArray[5].toString(16),
+                    checksum2: '0x' + dataArray[6].toString(16),
+                    end: '0x' + dataArray[7].toString(16)
+                });
                 
-                // 状態変更の通知
-                if (this.onStatusChange) {
-                    this.onStatusChange(`デスク高さ: ${height / 10}cm`);
+                // 高さ情報の処理
+                // 参考文献によると、高さは4ビットの16進数として送信される
+                // バイト4-5が高さデータの可能性があるが、実際のデータ構造を確認する必要がある
+                const heightRaw = (dataArray[4] << 8) | dataArray[5];
+                const heightCm = heightRaw / 10;
+                
+                console.log('[DEBUG] 高さデータ（生）:', heightRaw);
+                console.log('[DEBUG] 高さデータ（cm）:', heightCm);
+                
+                // 高さが0の場合は、Wake Upコマンド送信後のブロードキャスト期間外の可能性
+                if (heightRaw === 0) {
+                    console.log('[DEBUG] 高さが0です。Wake Upコマンドを再送信するか、デスクが動いていない可能性があります。');
+                    return;
                 }
+                
+                // 高さの範囲チェック（60cm-120cmの範囲外は無効データの可能性）
+                if (heightCm < 60 || heightCm > 120) {
+                    console.warn('[DEBUG] 高さが範囲外です:', heightCm, 'cm');
+                    // 範囲外でも通知は送る（デバッグのため）
+                }
+                
+                // 高さ変更の通知
+                if (this.onHeightChange) {
+                    this.onHeightChange(heightCm);
+                }
+                
+                // 状態変更の通知（後方互換性のため残す）
+                if (this.onStatusChange) {
+                    this.onStatusChange(`デスク高さ: ${heightCm}cm`);
+                }
+            } else {
+                console.log('[DEBUG] パケット形式が一致しません。先頭バイト:', '0x' + dataArray[0].toString(16), '0x' + dataArray[1].toString(16));
             }
+        } else {
+            console.log('[DEBUG] データ長が不足しています:', dataArray.length);
         }
     }
     
@@ -391,6 +452,13 @@ class FlexiSpotSerial {
      */
     setStatusChangeHandler(handler) {
         this.onStatusChange = handler;
+    }
+    
+    /**
+     * 高さ変更のイベントハンドラーを設定
+     */
+    setHeightChangeHandler(handler) {
+        this.onHeightChange = handler;
     }
 }
 
