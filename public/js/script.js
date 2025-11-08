@@ -43,10 +43,19 @@ class FlexiSpotController {
         // ステータス表示
         this.statusMessage = document.getElementById('status-message');
         
+        // 高さ表示
+        this.heightValue = document.getElementById('height-value');
+        this.heightProgress = document.getElementById('height-progress');
+        
         // エラーモーダル
         this.errorModal = document.getElementById('error-modal');
         this.errorMessage = document.getElementById('error-message');
         this.errorCloseBtn = document.getElementById('error-close-btn');
+        
+        // 高さの範囲設定（cm）
+        this.heightMin = 60;
+        this.heightMax = 120;
+        this.currentHeight = null;
     }
     
     /**
@@ -131,6 +140,10 @@ class FlexiSpotController {
         
         this.serial.setStatusChangeHandler((status) => {
             this.updateStatus(status);
+        });
+        
+        this.serial.setHeightChangeHandler((heightCm) => {
+            this.updateHeight(heightCm);
         });
     }
     
@@ -313,9 +326,25 @@ class FlexiSpotController {
             });
             this.upBtn.classList.remove('active');
             this.downBtn.classList.remove('active');
+            
+            // 高さ表示をリセット
+            this.resetHeightDisplay();
         }
         
         this.updateControlButtonsState();
+    }
+    
+    /**
+     * 高さ表示をリセット
+     */
+    resetHeightDisplay() {
+        this.currentHeight = null;
+        if (this.heightValue) {
+            this.heightValue.textContent = '--';
+        }
+        if (this.heightProgress) {
+            this.heightProgress.style.width = '0%';
+        }
     }
     
     /**
@@ -447,6 +476,41 @@ class FlexiSpotController {
         console.log(`%cFlexiSpot Controller v${this.version}`, 'color: #4299e1; font-weight: bold; font-size: 14px;');
         console.log(`Build Date: ${this.buildDate}`);
         console.log('Buffer overrun fix applied');
+    }
+    
+    /**
+     * 高さ表示を更新
+     */
+    updateHeight(heightCm) {
+        console.log('[DEBUG] updateHeight呼び出し:', heightCm, 'cm');
+        
+        // 高さの範囲チェック
+        if (heightCm < this.heightMin || heightCm > this.heightMax) {
+            // 範囲外の場合は表示しない（データが不正な可能性）
+            console.warn('[DEBUG] 高さが範囲外のため表示しません:', heightCm, 'cm (範囲:', this.heightMin, '-', this.heightMax, 'cm)');
+            return;
+        }
+        
+        this.currentHeight = heightCm;
+        console.log('[DEBUG] 高さ表示を更新:', heightCm, 'cm');
+        
+        // 数値表示を更新
+        if (this.heightValue) {
+            this.heightValue.textContent = heightCm.toFixed(1);
+            console.log('[DEBUG] 高さ数値を更新:', heightCm.toFixed(1), 'cm');
+        } else {
+            console.error('[DEBUG] heightValue要素が見つかりません');
+        }
+        
+        // プログレスバーを更新
+        if (this.heightProgress) {
+            const percentage = ((heightCm - this.heightMin) / (this.heightMax - this.heightMin)) * 100;
+            const clampedPercentage = Math.max(0, Math.min(100, percentage));
+            this.heightProgress.style.width = `${clampedPercentage}%`;
+            console.log('[DEBUG] プログレスバーを更新:', clampedPercentage, '%');
+        } else {
+            console.error('[DEBUG] heightProgress要素が見つかりません');
+        }
     }
 }
 

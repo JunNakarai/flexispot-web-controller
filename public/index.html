@@ -4,95 +4,157 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FlexiSpot Controller</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>FlexiSpot Controller</h1>
+        <header class="hero-section">
+            <div class="hero-content">
+                <span class="hero-eyebrow">FlexiSpot Desk Automation</span>
+                <h1 class="hero-title">FlexiSpot Controller</h1>
+                <p class="hero-description">
+                    Web Serial APIを通じてFlexiSpotデスクをコントロール。接続からプリセットの呼び出しまで、ブラウザだけでスマートに操作できます。
+                </p>
+                <div class="hero-actions">
+                    <a class="btn btn-primary hero-cta" href="#connection-section">
+                        接続設定に進む
+                    </a>
+                    <div class="hero-note">
+                        <span class="hero-dot" aria-hidden="true"></span>
+                        <span>Chrome / Edge・HTTPS 環境対応</span>
+                    </div>
+                </div>
+            </div>
+            <div class="hero-visual" aria-hidden="true">
+                <div class="hero-orb"></div>
+                <div class="hero-card">
+                    <span class="hero-card-label">プリセット</span>
+                    <div class="hero-card-pills">
+                        <span class="hero-card-pill">Sitting</span>
+                        <span class="hero-card-pill">Standing</span>
+                        <span class="hero-card-pill">Custom</span>
+                    </div>
+                    <span class="hero-card-footnote">リアルタイムで切り替え</span>
+                </div>
+            </div>
         </header>
 
-        <main>
-            <!-- 接続状態セクション -->
-            <section class="connection-section">
-                <div class="status-indicator">
-                    <span id="connection-status" class="status-dot disconnected"></span>
-                    <span id="connection-text">未接続</span>
-                </div>
-                <div class="connection-controls">
-                    <button id="connect-btn" class="btn btn-primary">接続</button>
-                    <button id="disconnect-btn" class="btn btn-secondary" disabled>切断</button>
-                </div>
-            </section>
+        <main class="main-content">
+            <div class="primary-grid" id="control-panel">
+                <!-- 接続状態セクション -->
+                <section class="connection-section card card-highlight" id="connection-section">
+                    <h2 class="section-title">接続ステータス</h2>
+                    <div class="status-indicator">
+                        <span id="connection-status" class="status-dot disconnected"></span>
+                        <span id="connection-text">未接続</span>
+                    </div>
+                    <div class="connection-controls">
+                        <button id="connect-btn" class="btn btn-primary">接続</button>
+                        <button id="disconnect-btn" class="btn btn-secondary" disabled>切断</button>
+                    </div>
+                </section>
 
-            <!-- プリセットボタンセクション -->
-            <section class="preset-section">
-                <div class="preset-grid">
-                    <button id="preset1-btn" class="btn btn-preset" data-preset="1">
-                        プリセット1
-                    </button>
-                    <button id="preset2-btn" class="btn btn-preset" data-preset="2">
-                        プリセット2
-                    </button>
-                    <button id="sitting-btn" class="btn btn-preset" data-preset="sitting">
-                        シッティング
-                    </button>
-                    <button id="standing-btn" class="btn btn-preset" data-preset="standing">
-                        スタンド
-                    </button>
-                </div>
-            </section>
+                <!-- 高さ表示セクション -->
+                <section class="height-section card">
+                    <h2 class="section-title">現在の高さ</h2>
+                    <div class="height-display">
+                        <div class="height-value-container">
+                            <span id="height-value" class="height-value">--</span>
+                            <span class="height-unit">cm</span>
+                        </div>
+                        <div class="height-range">
+                            <div class="height-progress-bar">
+                                <div id="height-progress" class="height-progress-fill"></div>
+                            </div>
+                            <div class="height-range-labels">
+                                <span class="height-range-min">60cm</span>
+                                <span class="height-range-max">120cm</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
 
-            <!-- 手動制御セクション -->
-            <section class="manual-section">
-                <div class="manual-controls">
-                    <button id="up-btn" class="btn btn-control btn-up">
-                        ⬆️ UP
-                    </button>
-                    <button id="down-btn" class="btn btn-control btn-down">
-                        ⬇️ DOWN
-                    </button>
-                </div>
-            </section>
+                <!-- 手動制御セクション -->
+                <section class="manual-section card">
+                    <h2 class="section-title">手動で操作</h2>
+                    <p class="section-description">上下ボタンでデスクをリアルタイムに調整できます。</p>
+                    <div class="manual-controls">
+                        <button id="up-btn" class="btn btn-control btn-up">
+                            ⬆️ UP
+                        </button>
+                        <button id="down-btn" class="btn btn-control btn-down">
+                            ⬇️ DOWN
+                        </button>
+                    </div>
+                </section>
+
+                <!-- プリセットボタンセクション -->
+                <section class="preset-section card">
+                    <h2 class="section-title">ワンタッチプリセット</h2>
+                    <p class="section-description">よく使う姿勢はプリセットから即座に呼び出せます。</p>
+                    <div class="preset-grid">
+                        <button id="preset1-btn" class="btn btn-preset" data-preset="1">
+                            プリセット1
+                        </button>
+                        <button id="preset2-btn" class="btn btn-preset" data-preset="2">
+                            プリセット2
+                        </button>
+                        <button id="sitting-btn" class="btn btn-preset" data-preset="sitting">
+                            シッティング
+                        </button>
+                        <button id="standing-btn" class="btn btn-preset" data-preset="standing">
+                            スタンド
+                        </button>
+                    </div>
+                </section>
+            </div>
 
             <!-- ステータス表示 -->
-            <section class="status-section">
+            <section class="status-section card card-info">
                 <div id="status-message" class="status-message">
                     Web Serial APIを使用してFlexiSpotデスクを制御します。<br>
                     HTTPS環境とChrome/Edgeブラウザが必要です。
                 </div>
             </section>
 
-            <!-- 推奨アクセサリ -->
-            <section class="accessories-section">
-                <h2>推奨アクセサリ</h2>
-                <p class="accessory-description">
-                    接続に必要なケーブルをこちらから購入できます。
-                </p>
-                <ul class="accessory-list">
-                    <li>
-                        <a class="accessory-link" href="https://amzn.to/3JnC9de" target="_blank" rel="noopener noreferrer">
-                            シリアル変換ケーブル
-                            <span aria-hidden="true">↗</span>
-                        </a>
-                    </li>
-                    <li>
-                        <a class="accessory-link" href="https://amzn.to/42WGkU4" target="_blank" rel="noopener noreferrer">
-                            LANケーブル
-                            <span aria-hidden="true">↗</span>
-                        </a>
-                    </li>
-                </ul>
-            </section>
+            <div class="secondary-grid">
+                <!-- 推奨アクセサリ -->
+                <section class="accessories-section card">
+                    <h2 class="section-title">推奨アクセサリ</h2>
+                    <p class="accessory-description">
+                        接続に必要なケーブルをこちらから購入できます。
+                    </p>
+                    <ul class="accessory-list">
+                        <li>
+                            <a class="accessory-link" href="https://amzn.to/3JnC9de" target="_blank" rel="noopener noreferrer">
+                                シリアル変換ケーブル
+                                <span aria-hidden="true">↗</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="accessory-link" href="https://amzn.to/42WGkU4" target="_blank" rel="noopener noreferrer">
+                                LANケーブル
+                                <span aria-hidden="true">↗</span>
+                            </a>
+                        </li>
+                    </ul>
+                </section>
 
-            <!-- 解説記事紹介 -->
-            <section class="article-section">
-                <h2>Zenn記事で詳しく解説しています</h2>
-                <a class="article-link" href="https://zenn.dev/junnakarai/articles/a91f03729b8319" target="_blank" rel="noopener noreferrer">
-                    記事を読む（Zenn）
-                    <span aria-hidden="true">↗</span>
-                </a>
-            </section>
+                <!-- 解説記事紹介 -->
+                <section class="article-section card">
+                    <h2 class="section-title">Zenn記事で詳しく解説しています</h2>
+                    <p class="article-description">
+                        開発背景やバイトシーケンスの詳細をZennで公開中。セットアップ手順も合わせてチェックしてください。
+                    </p>
+                    <a class="article-link" href="https://zenn.dev/junnakarai/articles/a91f03729b8319" target="_blank" rel="noopener noreferrer">
+                        記事を読む（Zenn）
+                        <span aria-hidden="true">↗</span>
+                    </a>
+                </section>
+            </div>
         </main>
     </div>
 

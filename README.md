@@ -35,16 +35,16 @@ HTTPS環境が必要なため、ローカルHTTPSサーバーを起動：
 
 ```bash
 # Python 3の場合
-python -m http.server 8000 --bind 127.0.0.1
+python -m http.server 8000 --bind 127.0.0.1 --directory public
 
 # Node.jsのhttpserver-sslの場合
-npx http-server-ssl -p 8000
+npx http-server-ssl public -p 8443 --host 127.0.0.1 --cert cert.pem --key key.pem
 ```
 
 ### 3. ブラウザでアクセス
 
 ```
-https://localhost:8000
+https://localhost:8443
 ```
 
 ## 🎮 使用方法
@@ -94,14 +94,20 @@ STANDING:  [0x9b, 0x06, 0x02, 0x10, 0x00, 0xac, 0xac, 0x9d]
 
 ```
 flexispot-web-controller/
-├── index.html              # メインページ
-├── styles.css              # スタイル定義
-├── script.js               # メイン機能
-├── serial-protocol.js      # シリアル通信処理
-├── README.md               # プロジェクト説明
+├── public/
+│   ├── index.html               # 公開用メインページ
+│   ├── css/
+│   │   └── styles.css           # ビルド済みスタイル
+│   └── js/
+│       ├── script.js            # UI制御とイベントハンドリング
+│       └── serial-protocol.js   # シリアル通信処理
+├── README.md                    # プロジェクト説明
+├── AGENTS.md                    # コーディングエージェント向けメモ
 └── .github/
-    └── copilot-instructions.md  # 開発指示書
+    └── workflows/               # CIと自動レビュー設定
 ```
+
+GitHub Pages には `.github/workflows/static.yml` が `public/` 以下をアップロードする設定になっています。
 
 ## 🔒 セキュリティ
 
