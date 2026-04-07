@@ -1,9 +1,11 @@
-import type { DailyHeightRecord, DeskPreset } from '../types';
+import type { DailyHeightRecord, DeskPreset, HeightSample } from '../types';
 
 const PRESETS_KEY = 'flexispot-control-deck-presets-v1';
 const HEIGHT_HISTORY_KEY = 'flexispot-control-deck-height-history-v1';
+const RECENT_HEIGHT_LOG_KEY = 'flexispot-control-deck-recent-height-log-v1';
 const MAX_DAYS = 14;
 const MAX_SAMPLES_PER_DAY = 1440;
+const MAX_RECENT_HEIGHT_LOG_SAMPLES = 240;
 
 const DEFAULT_PRESETS: DeskPreset[] = [
     {
@@ -80,6 +82,38 @@ export function appendDailyHeightRecord(dayKey: string, record: DailyHeightRecor
 
     window.localStorage.setItem(HEIGHT_HISTORY_KEY, JSON.stringify(trimmedHistory));
     return nextDayRecords;
+}
+
+export function loadRecentHeightLog(): HeightSample[] {
+    try {
+        const raw = window.localStorage.getItem(RECENT_HEIGHT_LOG_KEY);
+        if (!raw) {
+            return [];
+        }
+
+        const parsed = JSON.parse(raw) as HeightSample[];
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+
+        return parsed
+            .filter((sample) => (
+                sample
+                && typeof sample.timestamp === 'number'
+                && Number.isFinite(sample.timestamp)
+                && typeof sample.valueCm === 'number'
+                && Number.isFinite(sample.valueCm)
+            ))
+            .slice(-MAX_RECENT_HEIGHT_LOG_SAMPLES);
+    } catch {
+        return [];
+    }
+}
+
+export function appendRecentHeightLog(sample: HeightSample): HeightSample[] {
+    const next = [...loadRecentHeightLog(), sample].slice(-MAX_RECENT_HEIGHT_LOG_SAMPLES);
+    window.localStorage.setItem(RECENT_HEIGHT_LOG_KEY, JSON.stringify(next));
+    return next;
 }
 
 function loadAllHeightHistory(): Record<string, DailyHeightRecord[]> {

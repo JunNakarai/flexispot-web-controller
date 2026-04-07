@@ -1,4 +1,11 @@
-import { appendDailyHeightRecord, loadDailyHeightHistory, loadPresets, savePresets } from '../state/storage';
+import {
+    appendDailyHeightRecord,
+    appendRecentHeightLog,
+    loadDailyHeightHistory,
+    loadPresets,
+    loadRecentHeightLog,
+    savePresets
+} from '../state/storage';
 import { FlexiSpotSerialClient } from '../serial/client';
 import type { AppState, CommandName, DailyHeightRecord, DeskPreset, DeskStatus, HeightSample } from '../types';
 
@@ -9,6 +16,7 @@ const HEIGHT_MAX = 120;
 const HEIGHT_HISTORY_LIMIT = 24;
 const HEIGHT_SAVE_INTERVAL_MS = 60_000;
 const HEIGHT_SAVE_DELTA_CM = 0.4;
+const RECENT_HISTORY_SAVE_INTERVAL_MS = 1_000;
 const RECENT_CHART_SAMPLE_INTERVAL_MS = 1_000;
 const RECENT_CHART_MAX_SAMPLES = 900;
 
@@ -31,9 +39,10 @@ export class FlexiSpotApp {
         capturePaused: false
     };
     private presets: DeskPreset[] = loadPresets();
-    private history: HeightSample[] = [];
+    private history: HeightSample[] = loadRecentHeightLog().slice(-HEIGHT_HISTORY_LIMIT);
     private dailyHeightHistory: DailyHeightRecord[] = loadDailyHeightHistory(getTodayKey());
     private lastPersistedHeight: DailyHeightRecord | null = this.dailyHeightHistory.at(-1) ?? null;
+    private lastRecentHistoryPersistedAt: number | null = this.history.at(-1)?.timestamp ?? null;
     private sessionStartedAt: number | null = null;
     private recentChartHistory: HeightSample[] = [];
     private lastRecentChartSampleAt: number | null = null;
@@ -70,6 +79,7 @@ export class FlexiSpotApp {
 
                 this.history = [...this.history, sample].slice(-HEIGHT_HISTORY_LIMIT);
                 this.persistHeightSample(sample);
+                this.persistRecentHistorySample(sample);
                 this.appendRecentChartSample(sample);
                 this.patchState({
                     currentHeight: heightCm,
@@ -803,6 +813,16 @@ export class FlexiSpotApp {
 
         this.dailyHeightHistory = appendDailyHeightRecord(dayKey, record);
         this.lastPersistedHeight = record;
+    }
+
+    private persistRecentHistorySample(sample: HeightSample): void {
+        const lastPersistedAt = this.lastRecentHistoryPersistedAt;
+        if (lastPersistedAt !== null && sample.timestamp - lastPersistedAt < RECENT_HISTORY_SAVE_INTERVAL_MS) {
+            return;
+        }
+
+        this.lastRecentHistoryPersistedAt = sample.timestamp;
+        appendRecentHeightLog(sample);
     }
 
     private appendRecentChartSample(sample: HeightSample): void {
