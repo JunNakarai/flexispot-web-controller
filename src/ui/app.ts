@@ -1,0 +1,928 @@
+import { appendDailyHeightRecord, loadDailyHeightHistory, loadPresets, savePresets } from '../state/storage';
+import { FlexiSpotSerialClient } from '../serial/client';
+import type { AppState, CommandName, DailyHeightRecord, DeskPreset, DeskStatus, HeightSample } from '../types';
+
+const APP_VERSION = '2.0.0';
+const BUILD_DATE = '2026-03-20';
+const HEIGHT_MIN = 60;
+const HEIGHT_MAX = 120;
+const HEIGHT_HISTORY_LIMIT = 24;
+const HEIGHT_SAVE_INTERVAL_MS = 60_000;
+const HEIGHT_SAVE_DELTA_CM = 0.4;
+const RECENT_CHART_SAMPLE_INTERVAL_MS = 1_000;
+const RECENT_CHART_MAX_SAMPLES = 900;
+
+export class FlexiSpotApp {
+    private root: HTMLDivElement;
+    private serial = new FlexiSpotSerialClient();
+    private state: AppState = {
+        connectionStatus: 'idle',
+        isConnected: false,
+        currentHeight: null,
+        statusMessage: 'Secure dashboard ready',
+        latestError: null,
+        activePreset: null,
+        lastCommand: null,
+        lastHeightSampleAt: null,
+        receivedChunkCount: 0,
+        receivedByteCount: 0,
+        rawPreview: [],
+        rawCapture: [],
+        capturePaused: false
+    };
+    private presets: DeskPreset[] = loadPresets();
+    private history: HeightSample[] = [];
+    private dailyHeightHistory: DailyHeightRecord[] = loadDailyHeightHistory(getTodayKey());
+    private lastPersistedHeight: DailyHeightRecord | null = this.dailyHeightHistory.at(-1) ?? null;
+    private sessionStartedAt: number | null = null;
+    private recentChartHistory: HeightSample[] = [];
+    private lastRecentChartSampleAt: number | null = null;
+
+    constructor(root: HTMLDivElement) {
+        this.root = root;
+    }
+
+    mount(): void {
+        this.serial.setEvents({
+            onConnectionChange: (connected) => {
+                this.patchState({
+                    isConnected: connected,
+                    connectionStatus: connected ? 'connected' : 'idle',
+                    activePreset: connected ? this.state.activePreset : null,
+                    statusMessage: connected ? 'Desk connected and ready' : 'Desk disconnected'
+                });
+
+                if (connected) {
+                    this.sessionStartedAt = Date.now();
+                    this.recentChartHistory = [];
+                    this.lastRecentChartSampleAt = null;
+                } else {
+                    this.sessionStartedAt = null;
+                    this.recentChartHistory = [];
+                    this.lastRecentChartSampleAt = null;
+                }
+            },
+            onHeight: (heightCm) => {
+                const sample = {
+                    timestamp: Date.now(),
+                    valueCm: heightCm
+                };
+
+                this.history = [...this.history, sample].slice(-HEIGHT_HISTORY_LIMIT);
+                this.persistHeightSample(sample);
+                this.appendRecentChartSample(sample);
+                this.patchState({
+                    currentHeight: heightCm,
+                    lastHeightSampleAt: sample.timestamp
+                });
+            },
+            onStatus: (message) => {
+                this.patchState({ statusMessage: message });
+            },
+            onError: (message) => {
+                this.patchState({
+                    connectionStatus: 'error',
+                    latestError: message,
+                    statusMessage: message
+                });
+            },
+            onCommand: (command) => {
+                this.patchState({ lastCommand: command });
+            },
+            onRawData: ({ bytes, chunkCount, totalBytes }) => {
+                if (this.state.capturePaused) {
+                    this.patchState({
+                        receivedChunkCount: chunkCount,
+                        receivedByteCount: totalBytes
+                    });
+                    return;
+                }
+
+                const preview = formatHex(bytes);
+                this.patchState({
+                    receivedChunkCount: chunkCount,
+                    receivedByteCount: totalBytes,
+                    rawPreview: [preview, ...this.state.rawPreview].slice(0, 8),
+                    rawCapture: [...this.state.rawCapture, preview].slice(-400)
+                });
+            }
+        });
+
+        this.render();
+        this.attachEvents();
+    }
+
+    private patchState(next: Partial<AppState>): void {
+        this.state = { ...this.state, ...next };
+        this.render();
+        this.attachEvents();
+    }
+
+    private render(): void {
+        const supported = FlexiSpotSerialClient.isSupported();
+        const secure = FlexiSpotSerialClient.isSecureContext();
+        const heightPercentage = this.state.currentHeight === null
+            ? 0
+            : clamp(((this.state.currentHeight - HEIGHT_MIN) / (HEIGHT_MAX - HEIGHT_MIN)) * 100, 0, 100);
+        const recentChart = this.renderSessionChart();
+        const chart = this.renderDailyChart();
+
+        this.root.innerHTML = `
+            <div class="shell">
+                <section class="hero-panel">
+                    <div class="hero-copy">
+                        <p class="eyebrow">FlexiSpot Control Deck</p>
+                        <h1>Hardware control UI rebuilt for the browser.</h1>
+                        <p class="lede">
+                            スマートホームと IoT ダッシュボードの情報設計を取り入れ、接続状態、姿勢切り替え、リアルタイム高さ確認を一画面で完結させます。
+                        </p>
+                        <div class="hero-badges">
+                            <span class="badge ${supported ? 'ok' : 'warn'}">${supported ? 'Web Serial Ready' : 'Browser Unsupported'}</span>
+                            <span class="badge ${secure ? 'ok' : 'warn'}">${secure ? 'Secure Context' : 'HTTPS Required'}</span>
+                            <span class="badge neutral">v${APP_VERSION}</span>
+                        </div>
+                    </div>
+                    <div class="hero-metric">
+                        <p class="metric-label">Current Height</p>
+                        <div class="metric-value-row">
+                            <span class="metric-value">${this.state.currentHeight?.toFixed(1) ?? '--'}</span>
+                            <span class="metric-unit">cm</span>
+                        </div>
+                        <div class="metric-bar">
+                            <div class="metric-bar-fill" style="width:${heightPercentage}%"></div>
+                        </div>
+                        <div class="metric-scale">
+                            <span>${HEIGHT_MIN} cm</span>
+                            <span>${HEIGHT_MAX} cm</span>
+                        </div>
+                        <p class="metric-caption">${this.formatHeightStatus()}</p>
+                    </div>
+                </section>
+
+                <section class="dashboard-grid">
+                    <article class="panel panel-strong">
+                        <div class="panel-head">
+                            <div>
+                                <p class="panel-kicker">Connection</p>
+                                <h2>Desk Link</h2>
+                            </div>
+                            <span class="status-pill ${this.statusTone(this.state.connectionStatus)}">
+                                ${this.statusLabel(this.state.connectionStatus)}
+                            </span>
+                        </div>
+                        <p class="panel-body">${this.escapeHtml(this.state.statusMessage)}</p>
+                        <div class="button-row">
+                            <button class="button primary" data-action="connect" ${!supported || !secure || this.state.isConnected ? 'disabled' : ''}>Connect</button>
+                            <button class="button secondary" data-action="disconnect" ${this.state.isConnected ? '' : 'disabled'}>Disconnect</button>
+                        </div>
+                        <ul class="check-list">
+                            <li class="${supported ? 'ok' : 'warn'}">Chrome / Edge 系ブラウザ</li>
+                            <li class="${secure ? 'ok' : 'warn'}">HTTPS または localhost</li>
+                            <li class="${this.state.isConnected ? 'ok' : 'neutral'}">ユーザーがシリアルポートを許可</li>
+                        </ul>
+                    </article>
+
+                    <article class="panel">
+                        <div class="panel-head">
+                            <div>
+                                <p class="panel-kicker">Manual Control</p>
+                                <h2>Live Motion</h2>
+                            </div>
+                            <p class="shortcut-hint">Arrow Up / Arrow Down</p>
+                        </div>
+                        <div class="motion-grid">
+                            <button class="control control-up" data-hold="UP" ${this.state.isConnected ? '' : 'disabled'}>
+                                <span>Raise</span>
+                                <strong>UP</strong>
+                            </button>
+                            <button class="control control-down" data-hold="DOWN" ${this.state.isConnected ? '' : 'disabled'}>
+                                <span>Lower</span>
+                                <strong>DOWN</strong>
+                            </button>
+                        </div>
+                        <p class="muted">押している間だけコマンドを継続送信します。離した時点で停止します。</p>
+                    </article>
+
+                    <article class="panel panel-wide">
+                        <div class="panel-head">
+                            <div>
+                                <p class="panel-kicker">Quick Scenes</p>
+                                <h2>Preset Deck</h2>
+                            </div>
+                            <button class="button ghost" data-action="customize">Labels</button>
+                        </div>
+                        <div class="preset-grid">
+                            ${this.presets.map((preset) => this.renderPreset(preset)).join('')}
+                        </div>
+                    </article>
+
+                    <article class="panel">
+                        <div class="panel-head">
+                            <div>
+                                <p class="panel-kicker">Telemetry</p>
+                                <h2>Recent Samples</h2>
+                            </div>
+                            <p class="shortcut-hint">${this.state.lastHeightSampleAt ? this.formatTime(this.state.lastHeightSampleAt) : 'No signal'}</p>
+                        </div>
+                        <div class="history-list">
+                            ${this.renderHistory()}
+                        </div>
+                    </article>
+
+                    <article class="panel panel-wide">
+                        <div class="panel-head">
+                            <div>
+                                <p class="panel-kicker">Live Timeline</p>
+                                <h2>Session Height Flow</h2>
+                            </div>
+                            <p class="shortcut-hint">${recentChart.sampleCount} samples / 1 sec</p>
+                        </div>
+                        <div class="chart-card">
+                            ${recentChart.svg}
+                            <div class="chart-footer">
+                                <span>${recentChart.startLabel}</span>
+                                <span>${recentChart.middleLabel}</span>
+                                <span>${recentChart.endLabel}</span>
+                            </div>
+                        </div>
+                        <div class="chart-stats">
+                            <div>
+                                <dt>Min</dt>
+                                <dd>${recentChart.minLabel}</dd>
+                            </div>
+                            <div>
+                                <dt>Max</dt>
+                                <dd>${recentChart.maxLabel}</dd>
+                            </div>
+                            <div>
+                                <dt>Duration</dt>
+                                <dd>${recentChart.durationLabel}</dd>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="panel panel-wide">
+                        <div class="panel-head">
+                            <div>
+                                <p class="panel-kicker">Timeline</p>
+                                <h2>Daily Height Map</h2>
+                            </div>
+                            <p class="shortcut-hint">${chart.sampleCount} samples today</p>
+                        </div>
+                        <div class="chart-card">
+                            ${chart.svg}
+                            <div class="chart-footer">
+                                <span>00:00</span>
+                                <span>12:00</span>
+                                <span>23:59</span>
+                            </div>
+                        </div>
+                        <div class="chart-stats">
+                            <div>
+                                <dt>Min</dt>
+                                <dd>${chart.minLabel}</dd>
+                            </div>
+                            <div>
+                                <dt>Max</dt>
+                                <dd>${chart.maxLabel}</dd>
+                            </div>
+                            <div>
+                                <dt>Latest</dt>
+                                <dd>${chart.latestLabel}</dd>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="panel">
+                        <div class="panel-head">
+                            <div>
+                                <p class="panel-kicker">Session</p>
+                                <h2>Operational Notes</h2>
+                            </div>
+                        </div>
+                        <dl class="facts">
+                            <div>
+                                <dt>Last Command</dt>
+                                <dd>${this.state.lastCommand ?? 'None'}</dd>
+                            </div>
+                            <div>
+                                <dt>Preset In Flight</dt>
+                                <dd>${this.state.activePreset ?? 'None'}</dd>
+                            </div>
+                            <div>
+                                <dt>Build</dt>
+                                <dd>${BUILD_DATE}</dd>
+                            </div>
+                        </dl>
+                    </article>
+
+                    <article class="panel panel-wide">
+                        <div class="panel-head">
+                            <div>
+                                <p class="panel-kicker">Diagnostics</p>
+                                <h2>Serial RX Monitor</h2>
+                            </div>
+                            <div class="actions-inline">
+                                <button class="button ghost small" data-action="wake" ${this.state.isConnected ? '' : 'disabled'}>Send Wake</button>
+                                <button class="button ghost small" data-action="pause">${this.state.capturePaused ? 'Resume' : 'Pause'}</button>
+                                <button class="button ghost small" data-action="copy" ${this.state.rawCapture.length > 0 ? '' : 'disabled'}>Copy</button>
+                                <button class="button ghost small" data-action="clear">Clear</button>
+                            </div>
+                        </div>
+                        <dl class="facts">
+                            <div>
+                                <dt>RX Chunks</dt>
+                                <dd>${String(this.state.receivedChunkCount)}</dd>
+                            </div>
+                            <div>
+                                <dt>RX Bytes</dt>
+                                <dd>${String(this.state.receivedByteCount)}</dd>
+                            </div>
+                            <div>
+                                <dt>Decode State</dt>
+                                <dd>${this.state.currentHeight === null ? 'No parsed height yet' : 'Height parsed'}</dd>
+                            </div>
+                        </dl>
+                        <div class="raw-log">
+                            ${this.renderRawPreview()}
+                        </div>
+                    </article>
+                </section>
+
+                ${this.state.latestError ? `
+                    <section class="toast" role="alert">
+                        <div>
+                            <p class="toast-title">Serial Error</p>
+                            <p class="toast-message">${this.escapeHtml(this.state.latestError)}</p>
+                        </div>
+                        <button class="button ghost small" data-action="dismiss-error">Dismiss</button>
+                    </section>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    private attachEvents(): void {
+        this.root.querySelector('[data-action="connect"]')?.addEventListener('click', () => {
+            this.handleConnect();
+        });
+
+        this.root.querySelector('[data-action="disconnect"]')?.addEventListener('click', () => {
+            this.handleDisconnect();
+        });
+
+        this.root.querySelector('[data-action="dismiss-error"]')?.addEventListener('click', () => {
+            this.patchState({
+                latestError: null,
+                connectionStatus: this.state.isConnected ? 'connected' : 'idle'
+            });
+        });
+
+        this.root.querySelector('[data-action="customize"]')?.addEventListener('click', () => {
+            this.customizeLabels();
+        });
+
+        this.root.querySelector('[data-action="wake"]')?.addEventListener('click', () => {
+            this.serial.requestWake();
+        });
+
+        this.root.querySelector('[data-action="pause"]')?.addEventListener('click', () => {
+            this.patchState({
+                capturePaused: !this.state.capturePaused
+            });
+        });
+
+        this.root.querySelector('[data-action="copy"]')?.addEventListener('click', async () => {
+            await this.copyCapture();
+        });
+
+        this.root.querySelector('[data-action="clear"]')?.addEventListener('click', () => {
+            this.patchState({
+                rawPreview: [],
+                rawCapture: [],
+                receivedChunkCount: 0,
+                receivedByteCount: 0
+            });
+        });
+
+        this.root.querySelectorAll<HTMLElement>('[data-preset]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const command = button.dataset.preset as CommandName;
+                void this.runPreset(command);
+            });
+        });
+
+        this.root.querySelectorAll<HTMLElement>('[data-hold]').forEach((button) => {
+            const start = () => this.startManual(button.dataset.hold as 'UP' | 'DOWN');
+            const stop = () => this.stopManual();
+
+            button.addEventListener('pointerdown', start);
+            button.addEventListener('pointerup', stop);
+            button.addEventListener('pointerleave', stop);
+            button.addEventListener('pointercancel', stop);
+        });
+
+        document.onkeydown = (event: KeyboardEvent) => {
+            if (!this.state.isConnected) {
+                return;
+            }
+
+            if (event.repeat) {
+                return;
+            }
+
+            if (event.code === 'ArrowUp') {
+                event.preventDefault();
+                this.startManual('UP');
+            } else if (event.code === 'ArrowDown') {
+                event.preventDefault();
+                this.startManual('DOWN');
+            } else if (event.code === 'Digit1') {
+                event.preventDefault();
+                void this.runPreset('PRESET1');
+            } else if (event.code === 'Digit2') {
+                event.preventDefault();
+                void this.runPreset('PRESET2');
+            } else if (event.code === 'KeyS') {
+                event.preventDefault();
+                void this.runPreset('SITTING');
+            } else if (event.code === 'KeyT') {
+                event.preventDefault();
+                void this.runPreset('STANDING');
+            }
+        };
+
+        document.onkeyup = (event: KeyboardEvent) => {
+            if (event.code === 'ArrowUp' || event.code === 'ArrowDown') {
+                event.preventDefault();
+                this.stopManual();
+            }
+        };
+    }
+
+    private async handleConnect(): Promise<void> {
+        this.patchState({
+            connectionStatus: 'connecting',
+            latestError: null,
+            statusMessage: 'Waiting for serial port selection'
+        });
+
+        try {
+            await this.serial.connect();
+        } catch (error) {
+            this.patchState({
+                connectionStatus: 'error',
+                latestError: toMessage(error),
+                statusMessage: toMessage(error)
+            });
+        }
+    }
+
+    private async handleDisconnect(): Promise<void> {
+        try {
+            await this.serial.disconnect();
+            this.patchState({
+                currentHeight: null,
+                activePreset: null,
+                receivedChunkCount: 0,
+                receivedByteCount: 0,
+                rawPreview: [],
+                rawCapture: [],
+                capturePaused: false
+            });
+        } catch (error) {
+            this.patchState({
+                latestError: toMessage(error),
+                connectionStatus: 'error'
+            });
+        }
+    }
+
+    private startManual(direction: 'UP' | 'DOWN'): void {
+        if (!this.state.isConnected) {
+            return;
+        }
+
+        this.serial.startRepeating(direction);
+        this.patchState({
+            connectionStatus: direction === 'UP' ? 'moving-up' : 'moving-down',
+            statusMessage: direction === 'UP' ? 'Desk moving up' : 'Desk moving down',
+            activePreset: null
+        });
+    }
+
+    private stopManual(): void {
+        this.serial.stopRepeating();
+        if (!this.state.isConnected) {
+            return;
+        }
+
+        this.patchState({
+            connectionStatus: 'connected',
+            statusMessage: 'Motion stopped'
+        });
+    }
+
+    private async runPreset(command: CommandName): Promise<void> {
+        if (!this.state.isConnected) {
+            this.patchState({
+                latestError: 'デスクに接続されていません。',
+                connectionStatus: 'error'
+            });
+            return;
+        }
+
+        try {
+            await this.serial.sendCommand(command);
+            this.patchState({
+                activePreset: command,
+                connectionStatus: 'preset-running',
+                statusMessage: `${command} triggered`
+            });
+
+            window.setTimeout(() => {
+                if (this.state.activePreset === command) {
+                    this.patchState({
+                        activePreset: null,
+                        connectionStatus: this.state.isConnected ? 'connected' : 'idle',
+                        statusMessage: `${command} completed`
+                    });
+                }
+            }, 8000);
+        } catch (error) {
+            this.patchState({
+                latestError: toMessage(error),
+                connectionStatus: 'error'
+            });
+        }
+    }
+
+    private customizeLabels(): void {
+        const next = this.presets.map((preset) => {
+            const label = window.prompt(`${preset.id} の表示名`, preset.label);
+            return {
+                ...preset,
+                label: label?.trim() || preset.label
+            };
+        });
+
+        this.presets = next;
+        savePresets(next);
+        this.render();
+        this.attachEvents();
+    }
+
+    private renderPreset(preset: DeskPreset): string {
+        const active = this.state.activePreset === preset.id ? 'active' : '';
+        return `
+            <button class="preset-card ${preset.accent} ${active}" data-preset="${preset.id}" ${this.state.isConnected ? '' : 'disabled'}>
+                <span class="preset-label">${this.escapeHtml(preset.label)}</span>
+                <strong>${preset.id}</strong>
+                <span class="preset-description">${this.escapeHtml(preset.description)}</span>
+                <span class="preset-shortcut">Shortcut ${this.escapeHtml(preset.shortcut)}</span>
+            </button>
+        `;
+    }
+
+    private renderHistory(): string {
+        if (this.history.length === 0) {
+            return '<p class="empty-state">高さストリーム受信後に履歴が表示されます。</p>';
+        }
+
+        return this.history
+            .slice()
+            .reverse()
+            .map((sample) => `
+                <div class="history-item">
+                    <strong>${sample.valueCm.toFixed(1)} cm</strong>
+                    <span>${this.formatTime(sample.timestamp)}</span>
+                </div>
+            `)
+            .join('');
+    }
+
+    private renderDailyChart(): {
+        svg: string;
+        sampleCount: number;
+        minLabel: string;
+        maxLabel: string;
+        latestLabel: string;
+    } {
+        if (this.dailyHeightHistory.length === 0) {
+            return {
+                svg: '<p class="empty-state">今日の高さ履歴はまだありません。接続したまま少し使うと自動で保存されます。</p>',
+                sampleCount: 0,
+                minLabel: '--',
+                maxLabel: '--',
+                latestLabel: '--'
+            };
+        }
+
+        const width = 760;
+        const height = 220;
+        const padding = 18;
+        const points = this.dailyHeightHistory.map((record) => {
+            const date = new Date(record.timestamp);
+            const minutes = date.getHours() * 60 + date.getMinutes() + date.getSeconds() / 60;
+            const x = padding + (minutes / (24 * 60)) * (width - padding * 2);
+            const y = padding + (1 - ((record.valueCm - HEIGHT_MIN) / (HEIGHT_MAX - HEIGHT_MIN))) * (height - padding * 2);
+            return `${x.toFixed(1)},${clamp(y, padding, height - padding).toFixed(1)}`;
+        });
+        const values = this.dailyHeightHistory.map((record) => record.valueCm);
+        const latest = this.dailyHeightHistory.at(-1)?.valueCm ?? null;
+        const ticks = [120, 90, 60];
+
+        return {
+            svg: `
+                <svg class="height-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Today's desk height chart">
+                    ${this.renderChartTicks({
+                        width,
+                        height,
+                        padding,
+                        ticks,
+                        mode: 'fixed'
+                    })}
+                    <polyline points="${points.join(' ')}" class="chart-line"></polyline>
+                </svg>
+            `,
+            sampleCount: this.dailyHeightHistory.length,
+            minLabel: `${Math.min(...values).toFixed(1)} cm`,
+            maxLabel: `${Math.max(...values).toFixed(1)} cm`,
+            latestLabel: latest === null ? '--' : `${latest.toFixed(1)} cm`
+        };
+    }
+
+    private renderSessionChart(): {
+        svg: string;
+        sampleCount: number;
+        minLabel: string;
+        maxLabel: string;
+        durationLabel: string;
+        startLabel: string;
+        middleLabel: string;
+        endLabel: string;
+    } {
+        if (this.recentChartHistory.length === 0 || this.sessionStartedAt === null) {
+            return {
+                svg: '<p class="empty-state">接続後の高さを 30 秒ごとにプロットします。少し使うと、使い始め基準の流れが見えるようになります。</p>',
+                sampleCount: 0,
+                minLabel: '--',
+                maxLabel: '--',
+                durationLabel: '--',
+                startLabel: '--:--',
+                middleLabel: '--:--',
+                endLabel: '--:--'
+            };
+        }
+
+        const rangeStart = this.sessionStartedAt;
+        const rangeEnd = this.recentChartHistory.at(-1)?.timestamp ?? rangeStart;
+        const midpoint = rangeStart + (rangeEnd - rangeStart) / 2;
+        const chart = this.buildChartSvg(this.recentChartHistory, rangeStart, rangeEnd);
+
+        return {
+            svg: chart.svg,
+            sampleCount: this.recentChartHistory.length,
+            minLabel: chart.minLabel,
+            maxLabel: chart.maxLabel,
+            durationLabel: formatDuration(rangeEnd - rangeStart),
+            startLabel: this.formatTime(rangeStart),
+            middleLabel: this.formatTime(midpoint),
+            endLabel: this.formatTime(rangeEnd)
+        };
+    }
+
+    private renderRawPreview(): string {
+        if (this.state.rawPreview.length === 0) {
+            return '<p class="empty-state">まだ受信バイトがありません。ここが空なら、現状は高さデコード以前に RX が来ていません。</p>';
+        }
+
+        return this.state.rawPreview
+            .map((line) => `<code class="raw-line">${this.escapeHtml(line)}</code>`)
+            .join('');
+    }
+
+    private formatHeightStatus(): string {
+        if (this.state.currentHeight === null) {
+            return '高さブロードキャスト待機中';
+        }
+
+        const posture = this.state.currentHeight >= 100 ? 'Standing zone' : 'Sitting zone';
+        return `${posture} · last update ${this.state.lastHeightSampleAt ? this.formatTime(this.state.lastHeightSampleAt) : '--:--:--'}`;
+    }
+
+    private statusLabel(status: DeskStatus): string {
+        switch (status) {
+            case 'connecting':
+                return 'Connecting';
+            case 'connected':
+                return 'Online';
+            case 'moving-up':
+                return 'Rising';
+            case 'moving-down':
+                return 'Lowering';
+            case 'preset-running':
+                return 'Preset';
+            case 'error':
+                return 'Attention';
+            default:
+                return 'Idle';
+        }
+    }
+
+    private statusTone(status: DeskStatus): string {
+        switch (status) {
+            case 'connected':
+                return 'tone-green';
+            case 'moving-up':
+            case 'moving-down':
+            case 'preset-running':
+                return 'tone-amber';
+            case 'error':
+                return 'tone-red';
+            case 'connecting':
+                return 'tone-blue';
+            default:
+                return 'tone-slate';
+        }
+    }
+
+    private formatTime(timestamp: number): string {
+        return new Intl.DateTimeFormat('ja-JP', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        }).format(timestamp);
+    }
+
+    private escapeHtml(text: string): string {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    private async copyCapture(): Promise<void> {
+        if (this.state.rawCapture.length === 0) {
+            return;
+        }
+
+        const payload = this.state.rawCapture.join('\n');
+        try {
+            await navigator.clipboard.writeText(payload);
+            this.patchState({
+                statusMessage: `Copied ${this.state.rawCapture.length} RX lines to clipboard`
+            });
+        } catch {
+            this.patchState({
+                latestError: 'クリップボードへのコピーに失敗しました。'
+            });
+        }
+    }
+
+    private persistHeightSample(sample: HeightSample): void {
+        const dayKey = getDayKey(sample.timestamp);
+        const last = this.lastPersistedHeight;
+
+        if (last && getDayKey(last.timestamp) !== dayKey) {
+            this.dailyHeightHistory = loadDailyHeightHistory(dayKey);
+            this.lastPersistedHeight = this.dailyHeightHistory.at(-1) ?? null;
+        }
+
+        const shouldPersist = !this.lastPersistedHeight
+            || sample.timestamp - this.lastPersistedHeight.timestamp >= HEIGHT_SAVE_INTERVAL_MS
+            || Math.abs(sample.valueCm - this.lastPersistedHeight.valueCm) >= HEIGHT_SAVE_DELTA_CM;
+
+        if (!shouldPersist) {
+            return;
+        }
+
+        const record = {
+            timestamp: sample.timestamp,
+            valueCm: sample.valueCm
+        };
+
+        this.dailyHeightHistory = appendDailyHeightRecord(dayKey, record);
+        this.lastPersistedHeight = record;
+    }
+
+    private appendRecentChartSample(sample: HeightSample): void {
+        const lastSampleAt = this.lastRecentChartSampleAt;
+        if (lastSampleAt !== null && sample.timestamp - lastSampleAt < RECENT_CHART_SAMPLE_INTERVAL_MS) {
+            return;
+        }
+
+        this.recentChartHistory = [...this.recentChartHistory, sample].slice(-RECENT_CHART_MAX_SAMPLES);
+        this.lastRecentChartSampleAt = sample.timestamp;
+    }
+
+    private buildChartSvg(
+        records: Array<{ timestamp: number; valueCm: number }>,
+        rangeStart: number,
+        rangeEnd: number
+    ): {
+        svg: string;
+        minLabel: string;
+        maxLabel: string;
+    } {
+        const width = 760;
+        const height = 220;
+        const padding = 18;
+        const span = Math.max(rangeEnd - rangeStart, 1);
+        const values = records.map((record) => record.valueCm);
+        const minValue = Math.min(...values);
+        const maxValue = Math.max(...values);
+        const middleValue = (minValue + maxValue) / 2;
+        const points = records.map((record) => {
+            const x = padding + ((record.timestamp - rangeStart) / span) * (width - padding * 2);
+            const y = padding + (1 - ((record.valueCm - HEIGHT_MIN) / (HEIGHT_MAX - HEIGHT_MIN))) * (height - padding * 2);
+            return `${x.toFixed(1)},${clamp(y, padding, height - padding).toFixed(1)}`;
+        });
+
+        return {
+            svg: `
+                <svg class="height-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Desk height chart">
+                    ${this.renderChartTicks({
+                        width,
+                        height,
+                        padding,
+                        ticks: [maxValue, middleValue, minValue],
+                        mode: 'dynamic'
+                    })}
+                    <polyline points="${points.join(' ')}" class="chart-line"></polyline>
+                </svg>
+            `,
+            minLabel: `${Math.min(...values).toFixed(1)} cm`,
+            maxLabel: `${Math.max(...values).toFixed(1)} cm`
+        };
+    }
+
+    private renderChartTicks(params: {
+        width: number;
+        height: number;
+        padding: number;
+        ticks: number[];
+        mode: 'fixed' | 'dynamic';
+    }): string {
+        const { width, height, padding, ticks, mode } = params;
+        const axisLine = `
+            <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" class="chart-axis"></line>
+            <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" class="chart-axis"></line>
+        `;
+
+        const lines = ticks.map((tick, index) => {
+            const ratio = mode === 'fixed'
+                ? (tick - HEIGHT_MIN) / (HEIGHT_MAX - HEIGHT_MIN)
+                : ticks.length === 1
+                    ? 0.5
+                    : 1 - index / (ticks.length - 1);
+            const y = padding + (1 - ratio) * (height - padding * 2);
+
+            return `
+                <line x1="${padding}" y1="${y}" x2="${width - padding}" y2="${y}" class="${index === ticks.length - 1 ? 'chart-axis' : 'chart-grid'}"></line>
+                <text x="${padding - 8}" y="${y + 4}" text-anchor="end" class="chart-tick-label">${tick.toFixed(1)} cm</text>
+            `;
+        }).join('');
+
+        return axisLine + lines;
+    }
+}
+
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(Math.max(value, min), max);
+}
+
+function toMessage(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+
+    return 'Unknown application error';
+}
+
+function formatHex(bytes: number[]): string {
+    return bytes.map((byte) => byte.toString(16).padStart(2, '0')).join(' ');
+}
+
+function getTodayKey(): string {
+    return getDayKey(Date.now());
+}
+
+function getDayKey(timestamp: number): string {
+    return new Intl.DateTimeFormat('sv-SE', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(timestamp);
+}
+
+function formatDuration(durationMs: number): string {
+    const totalMinutes = Math.max(0, Math.floor(durationMs / 60_000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    if (hours === 0) {
+        return `${minutes} min`;
+    }
+
+    return `${hours}h ${minutes}m`;
+}
