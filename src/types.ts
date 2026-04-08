@@ -24,6 +24,13 @@ export interface DeskPreset {
     shortcut: string;
 }
 
+export interface AppSettings {
+    theme: 'system' | 'light' | 'dark';
+    notificationsEnabled: boolean;
+    diagnosticsAutoCapture: boolean;
+    commandIntervalMs: number;
+}
+
 export interface AppState {
     connectionStatus: DeskStatus;
     isConnected: boolean;
@@ -38,6 +45,7 @@ export interface AppState {
     rawPreview: string[];
     rawCapture: string[];
     capturePaused: boolean;
+    settingsOpen: boolean;
 }
 
 export interface HeightSample {

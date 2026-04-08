@@ -1,6 +1,6 @@
-import { appendDailyHeightRecord, loadDailyHeightHistory, loadPresets, savePresets } from '../state/storage';
+import { appendDailyHeightRecord, loadDailyHeightHistory, loadPresets, loadSettings, savePresets, saveSettings } from '../state/storage';
 import { FlexiSpotSerialClient } from '../serial/client';
-import type { AppState, CommandName, DailyHeightRecord, DeskPreset, DeskStatus, HeightSample } from '../types';
+import type { AppSettings, AppState, CommandName, DailyHeightRecord, DeskPreset, DeskStatus, HeightSample } from '../types';
 
 const APP_VERSION = '2.0.0';
 const BUILD_DATE = '2026-03-20';
@@ -11,10 +11,12 @@ const HEIGHT_SAVE_INTERVAL_MS = 60_000;
 const HEIGHT_SAVE_DELTA_CM = 0.4;
 const RECENT_CHART_SAMPLE_INTERVAL_MS = 1_000;
 const RECENT_CHART_MAX_SAMPLES = 900;
+const SETTINGS_MODAL_ID = 'settings-modal';
 
 export class FlexiSpotApp {
     private root: HTMLDivElement;
     private serial = new FlexiSpotSerialClient();
+    private settings: AppSettings = loadSettings();
     private state: AppState = {
         connectionStatus: 'idle',
         isConnected: false,
@@ -28,7 +30,8 @@ export class FlexiSpotApp {
         receivedByteCount: 0,
         rawPreview: [],
         rawCapture: [],
-        capturePaused: false
+        capturePaused: !this.settings.diagnosticsAutoCapture,
+        settingsOpen: false
     };
     private presets: DeskPreset[] = loadPresets();
     private history: HeightSample[] = [];
@@ -40,6 +43,8 @@ export class FlexiSpotApp {
 
     constructor(root: HTMLDivElement) {
         this.root = root;
+        this.serial.setCommandInterval(this.settings.commandIntervalMs);
+        this.applyTheme();
     }
 
     mount(): void {
@@ -51,6 +56,10 @@ export class FlexiSpotApp {
                     activePreset: connected ? this.state.activePreset : null,
                     statusMessage: connected ? 'Desk connected and ready' : 'Desk disconnected'
                 });
+                this.notifyIfEnabled(
+                    connected ? 'Desk connected' : 'Desk disconnected',
+                    connected ? 'FlexiSpot desk link is ready.' : 'The serial link has been closed.'
+                );
 
                 if (connected) {
                     this.sessionStartedAt = Date.now();
@@ -85,6 +94,7 @@ export class FlexiSpotApp {
                     latestError: message,
                     statusMessage: message
                 });
+                this.notifyIfEnabled('Serial error', message);
             },
             onCommand: (command) => {
                 this.patchState({ lastCommand: command });
@@ -140,6 +150,9 @@ export class FlexiSpotApp {
                             <span class="badge ${supported ? 'ok' : 'warn'}">${supported ? 'Web Serial Ready' : 'Browser Unsupported'}</span>
                             <span class="badge ${secure ? 'ok' : 'warn'}">${secure ? 'Secure Context' : 'HTTPS Required'}</span>
                             <span class="badge neutral">v${APP_VERSION}</span>
+                        </div>
+                        <div class="hero-actions">
+                            <button class="button ghost" data-action="open-settings">Settings</button>
                         </div>
                     </div>
                     <div class="hero-metric">
@@ -313,6 +326,14 @@ export class FlexiSpotApp {
                                 <dt>Build</dt>
                                 <dd>${BUILD_DATE}</dd>
                             </div>
+                            <div>
+                                <dt>Theme</dt>
+                                <dd>${this.formatThemeLabel()}</dd>
+                            </div>
+                            <div>
+                                <dt>Command Interval</dt>
+                                <dd>${this.settings.commandIntervalMs} ms</dd>
+                            </div>
                         </dl>
                     </article>
 
@@ -358,6 +379,8 @@ export class FlexiSpotApp {
                         <button class="button ghost small" data-action="dismiss-error">Dismiss</button>
                     </section>
                 ` : ''}
+
+                ${this.renderSettingsModal()}
             </div>
         `;
     }
@@ -380,6 +403,29 @@ export class FlexiSpotApp {
 
         this.root.querySelector('[data-action="customize"]')?.addEventListener('click', () => {
             this.customizeLabels();
+        });
+
+        this.root.querySelector('[data-action="open-settings"]')?.addEventListener('click', () => {
+            this.patchState({ settingsOpen: true });
+        });
+
+        this.root.querySelector('[data-action="close-settings"]')?.addEventListener('click', () => {
+            this.patchState({ settingsOpen: false });
+        });
+
+        this.root.querySelector('[data-action="cancel-settings"]')?.addEventListener('click', () => {
+            this.patchState({ settingsOpen: false });
+        });
+
+        this.root.querySelector('[data-settings-backdrop]')?.addEventListener('click', (event) => {
+            if (event.target === event.currentTarget) {
+                this.patchState({ settingsOpen: false });
+            }
+        });
+
+        this.root.querySelector<HTMLFormElement>('[data-settings-form]')?.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            await this.handleSaveSettings(event.currentTarget);
         });
 
         this.root.querySelector('[data-action="wake"]')?.addEventListener('click', () => {
@@ -423,6 +469,16 @@ export class FlexiSpotApp {
         });
 
         document.onkeydown = (event: KeyboardEvent) => {
+            if (this.state.settingsOpen && event.code === 'Escape') {
+                event.preventDefault();
+                this.patchState({ settingsOpen: false });
+                return;
+            }
+
+            if (this.state.settingsOpen) {
+                return;
+            }
+
             if (!this.state.isConnected) {
                 return;
             }
@@ -488,7 +544,7 @@ export class FlexiSpotApp {
                 receivedByteCount: 0,
                 rawPreview: [],
                 rawCapture: [],
-                capturePaused: false
+                capturePaused: !this.settings.diagnosticsAutoCapture
             });
         } catch (error) {
             this.patchState({
@@ -547,6 +603,7 @@ export class FlexiSpotApp {
                         connectionStatus: this.state.isConnected ? 'connected' : 'idle',
                         statusMessage: `${command} completed`
                     });
+                    this.notifyIfEnabled('Preset completed', `${command} finished on the connected desk.`);
                 }
             }, 8000);
         } catch (error) {
@@ -599,6 +656,67 @@ export class FlexiSpotApp {
                 </div>
             `)
             .join('');
+    }
+
+    private renderSettingsModal(): string {
+        if (!this.state.settingsOpen) {
+            return '';
+        }
+
+        const notificationsAvailable = typeof Notification !== 'undefined';
+        const notificationLabel = !notificationsAvailable
+            ? 'Unsupported in this browser'
+            : Notification.permission === 'granted'
+                ? 'Permission granted'
+                : Notification.permission === 'denied'
+                    ? 'Permission denied'
+                    : 'Permission not requested';
+
+        return `
+            <section class="modal-backdrop" data-settings-backdrop>
+                <div class="modal-card" id="${SETTINGS_MODAL_ID}" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+                    <div class="panel-head modal-head">
+                        <div>
+                            <p class="panel-kicker">Preferences</p>
+                            <h2 id="settings-title">Settings</h2>
+                        </div>
+                        <button class="button ghost small" type="button" data-action="close-settings">Close</button>
+                    </div>
+                    <form class="settings-form" data-settings-form>
+                        <label class="settings-block">
+                            <span class="settings-label">Theme</span>
+                            <span class="settings-help">ライト / ダーク / システム追従を切り替えます。</span>
+                            <select name="theme" class="settings-field">
+                                ${this.renderThemeOptions()}
+                            </select>
+                        </label>
+                        <label class="settings-block">
+                            <span class="settings-label">Command interval</span>
+                            <span class="settings-help">UP / DOWN ホールド時の送信間隔です。短くするほど反応は速くなります。</span>
+                            <input name="commandIntervalMs" class="settings-field" type="number" min="48" max="500" step="4" value="${String(this.settings.commandIntervalMs)}" />
+                        </label>
+                        <label class="settings-toggle">
+                            <input type="checkbox" name="diagnosticsAutoCapture" ${this.settings.diagnosticsAutoCapture ? 'checked' : ''} />
+                            <span>
+                                <strong>Capture diagnostics by default</strong>
+                                <small>接続時に Serial RX Monitor のキャプチャを自動開始します。</small>
+                            </span>
+                        </label>
+                        <label class="settings-toggle">
+                            <input type="checkbox" name="notificationsEnabled" ${this.settings.notificationsEnabled ? 'checked' : ''} ${notificationsAvailable ? '' : 'disabled'} />
+                            <span>
+                                <strong>Enable desktop notifications</strong>
+                                <small>${notificationLabel}</small>
+                            </span>
+                        </label>
+                        <div class="settings-actions">
+                            <button class="button ghost" type="button" data-action="cancel-settings">Cancel</button>
+                            <button class="button primary" type="submit">Save settings</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+        `;
     }
 
     private renderDailyChart(): {
@@ -885,6 +1003,98 @@ export class FlexiSpotApp {
 
         return axisLine + lines;
     }
+
+    private renderThemeOptions(): string {
+        return ['system', 'light', 'dark']
+            .map((theme) => `<option value="${theme}" ${this.settings.theme === theme ? 'selected' : ''}>${this.formatThemeOption(theme as AppSettings['theme'])}</option>`)
+            .join('');
+    }
+
+    private formatThemeOption(theme: AppSettings['theme']): string {
+        switch (theme) {
+            case 'light':
+                return 'Light';
+            case 'dark':
+                return 'Dark';
+            default:
+                return 'System';
+        }
+    }
+
+    private formatThemeLabel(): string {
+        return this.formatThemeOption(this.settings.theme);
+    }
+
+    private async handleSaveSettings(form: HTMLFormElement): Promise<void> {
+        const formData = new FormData(form);
+        const nextSettings = saveSettings({
+            theme: readThemeValue(formData.get('theme')),
+            notificationsEnabled: formData.get('notificationsEnabled') === 'on',
+            diagnosticsAutoCapture: formData.get('diagnosticsAutoCapture') === 'on',
+            commandIntervalMs: Number(formData.get('commandIntervalMs'))
+        });
+
+        if (nextSettings.notificationsEnabled) {
+            const permissionGranted = await this.ensureNotificationPermission();
+            if (!permissionGranted) {
+                nextSettings.notificationsEnabled = false;
+                saveSettings(nextSettings);
+            }
+        }
+
+        this.settings = nextSettings;
+        this.serial.setCommandInterval(this.settings.commandIntervalMs);
+        this.applyTheme();
+        this.patchState({
+            settingsOpen: false,
+            capturePaused: this.settings.diagnosticsAutoCapture ? this.state.capturePaused : true,
+            statusMessage: 'Settings updated'
+        });
+    }
+
+    private applyTheme(): void {
+        const root = document.documentElement;
+        if (this.settings.theme === 'system') {
+            delete root.dataset.theme;
+            return;
+        }
+
+        root.dataset.theme = this.settings.theme;
+    }
+
+    private async ensureNotificationPermission(): Promise<boolean> {
+        if (typeof Notification === 'undefined') {
+            this.patchState({
+                latestError: 'このブラウザでは通知を利用できません。'
+            });
+            return false;
+        }
+
+        if (Notification.permission === 'granted') {
+            return true;
+        }
+
+        if (Notification.permission === 'denied') {
+            this.patchState({
+                latestError: 'ブラウザ通知が拒否されています。権限設定を確認してください。'
+            });
+            return false;
+        }
+
+        return Notification.requestPermission().then((permission) => permission === 'granted');
+    }
+
+    private notifyIfEnabled(title: string, body: string): void {
+        if (!this.settings.notificationsEnabled || typeof Notification === 'undefined') {
+            return;
+        }
+
+        if (Notification.permission !== 'granted' || document.visibilityState === 'visible') {
+            return;
+        }
+
+        void new Notification(title, { body });
+    }
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -925,4 +1135,10 @@ function formatDuration(durationMs: number): string {
     }
 
     return `${hours}h ${minutes}m`;
+}
+
+function readThemeValue(value: FormDataEntryValue | null): AppSettings['theme'] {
+    return value === 'light' || value === 'dark' || value === 'system'
+        ? value
+        : 'system';
 }
