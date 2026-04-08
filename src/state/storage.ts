@@ -1,9 +1,12 @@
-import type { DailyHeightRecord, DeskPreset } from '../types';
+import type { AppSettings, DailyHeightRecord, DeskPreset } from '../types';
 
 const PRESETS_KEY = 'flexispot-control-deck-presets-v1';
 const HEIGHT_HISTORY_KEY = 'flexispot-control-deck-height-history-v1';
+const SETTINGS_KEY = 'flexispot-control-deck-settings-v1';
 const MAX_DAYS = 14;
 const MAX_SAMPLES_PER_DAY = 1440;
+const MIN_COMMAND_INTERVAL_MS = 48;
+const MAX_COMMAND_INTERVAL_MS = 500;
 
 const DEFAULT_PRESETS: DeskPreset[] = [
     {
@@ -36,6 +39,13 @@ const DEFAULT_PRESETS: DeskPreset[] = [
     }
 ];
 
+const DEFAULT_SETTINGS: AppSettings = {
+    theme: 'system',
+    notificationsEnabled: false,
+    diagnosticsAutoCapture: true,
+    commandIntervalMs: 108
+};
+
 export function loadPresets(): DeskPreset[] {
     try {
         const raw = window.localStorage.getItem(PRESETS_KEY);
@@ -59,6 +69,26 @@ export function loadPresets(): DeskPreset[] {
 
 export function savePresets(presets: DeskPreset[]): void {
     window.localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
+
+export function loadSettings(): AppSettings {
+    try {
+        const raw = window.localStorage.getItem(SETTINGS_KEY);
+        if (!raw) {
+            return DEFAULT_SETTINGS;
+        }
+
+        const parsed = JSON.parse(raw) as Partial<AppSettings>;
+        return sanitizeSettings(parsed);
+    } catch {
+        return DEFAULT_SETTINGS;
+    }
+}
+
+export function saveSettings(settings: AppSettings): AppSettings {
+    const sanitized = sanitizeSettings(settings);
+    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(sanitized));
+    return sanitized;
 }
 
 export function loadDailyHeightHistory(dayKey: string): DailyHeightRecord[] {
@@ -104,4 +134,28 @@ function trimHistory(history: Record<string, DailyHeightRecord[]>): Record<strin
         accumulator[key] = history[key].slice(-MAX_SAMPLES_PER_DAY);
         return accumulator;
     }, {});
+}
+
+function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSettings {
+    const theme = input?.theme === 'light' || input?.theme === 'dark' || input?.theme === 'system'
+        ? input.theme
+        : DEFAULT_SETTINGS.theme;
+    const commandInterval = typeof input?.commandIntervalMs === 'number'
+        ? clamp(Math.round(input.commandIntervalMs), MIN_COMMAND_INTERVAL_MS, MAX_COMMAND_INTERVAL_MS)
+        : DEFAULT_SETTINGS.commandIntervalMs;
+
+    return {
+        theme,
+        notificationsEnabled: typeof input?.notificationsEnabled === 'boolean'
+            ? input.notificationsEnabled
+            : DEFAULT_SETTINGS.notificationsEnabled,
+        diagnosticsAutoCapture: typeof input?.diagnosticsAutoCapture === 'boolean'
+            ? input.diagnosticsAutoCapture
+            : DEFAULT_SETTINGS.diagnosticsAutoCapture,
+        commandIntervalMs: commandInterval
+    };
+}
+
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(Math.max(value, min), max);
 }

@@ -28,6 +28,7 @@ export class FlexiSpotSerialClient {
     private readBuffer: number[] = [];
     private chunkCount = 0;
     private totalBytes = 0;
+    private commandIntervalMs = COMMAND_INTERVAL_MS;
 
     static isSupported(): boolean {
         return 'serial' in navigator;
@@ -43,6 +44,10 @@ export class FlexiSpotSerialClient {
 
     get connected(): boolean {
         return this.isConnected;
+    }
+
+    setCommandInterval(intervalMs: number): void {
+        this.commandIntervalMs = intervalMs;
     }
 
     async connect(): Promise<void> {
@@ -130,7 +135,7 @@ export class FlexiSpotSerialClient {
                 this.events.onError?.(toMessage(error));
                 this.stopRepeating();
             });
-        }, COMMAND_INTERVAL_MS);
+        }, this.commandIntervalMs);
     }
 
     stopRepeating(): void {

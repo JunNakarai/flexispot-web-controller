@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { appendDailyHeightRecord, loadDailyHeightHistory, loadPresets, savePresets } from './storage';
+import { appendDailyHeightRecord, loadDailyHeightHistory, loadPresets, loadSettings, savePresets, saveSettings } from './storage';
 
 const PRESETS_KEY = 'flexispot-control-deck-presets-v1';
 const HEIGHT_HISTORY_KEY = 'flexispot-control-deck-height-history-v1';
+const SETTINGS_KEY = 'flexispot-control-deck-settings-v1';
 
 class LocalStorageMock {
     private storage = new Map<string, string>();
@@ -65,6 +66,46 @@ describe('storage', () => {
         savePresets(presets);
 
         expect(loadPresets()).toEqual(presets);
+    });
+
+    it('returns default settings and sanitizes saved values', () => {
+        expect(loadSettings()).toEqual({
+            theme: 'system',
+            notificationsEnabled: false,
+            diagnosticsAutoCapture: true,
+            commandIntervalMs: 108
+        });
+
+        window.localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+            theme: 'dark',
+            notificationsEnabled: true,
+            diagnosticsAutoCapture: false,
+            commandIntervalMs: 12
+        }));
+
+        expect(loadSettings()).toEqual({
+            theme: 'dark',
+            notificationsEnabled: true,
+            diagnosticsAutoCapture: false,
+            commandIntervalMs: 48
+        });
+    });
+
+    it('persists sanitized settings', () => {
+        const saved = saveSettings({
+            theme: 'light',
+            notificationsEnabled: true,
+            diagnosticsAutoCapture: false,
+            commandIntervalMs: 999
+        });
+
+        expect(saved).toEqual({
+            theme: 'light',
+            notificationsEnabled: true,
+            diagnosticsAutoCapture: false,
+            commandIntervalMs: 500
+        });
+        expect(loadSettings()).toEqual(saved);
     });
 
     it('appends daily history records and trims to the per-day limit', () => {
