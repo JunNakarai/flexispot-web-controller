@@ -312,13 +312,53 @@ button {
 .control,
 .preset-card {
     border-radius: 22px;
-    transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+    transition: opacity 160ms ease, background-color 160ms ease, border-color 160ms ease;
 }
 
 .button:hover:not(:disabled),
 .control:hover:not(:disabled),
 .preset-card:hover:not(:disabled) {
-    box-shadow: 0 18px 30px -26px rgba(16, 32, 21, 0.55);
+    opacity: 0.96;
+}
+
+.button.primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #184128 0%, #2a6545 100%);
+}
+
+.button.secondary:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.panel:not(.panel-strong) .button.secondary:hover:not(:disabled) {
+    background: rgba(16, 32, 21, 0.1);
+}
+
+.button.ghost:hover:not(:disabled) {
+    background: rgba(16, 32, 21, 0.1);
+}
+
+.control-up:hover:not(:disabled) {
+    background: linear-gradient(160deg, #129877 0%, #45c99a 100%);
+}
+
+.control-down:hover:not(:disabled) {
+    background: linear-gradient(160deg, #d28321 0%, #f4b04b 100%);
+}
+
+.preset-card.sky:hover:not(:disabled) {
+    background: linear-gradient(180deg, rgba(76, 167, 196, 0.22), rgba(255, 255, 255, 0.98));
+}
+
+.preset-card.amber:hover:not(:disabled) {
+    background: linear-gradient(180deg, rgba(240, 166, 61, 0.24), rgba(255, 255, 255, 0.98));
+}
+
+.preset-card.mint:hover:not(:disabled) {
+    background: linear-gradient(180deg, rgba(57, 185, 132, 0.24), rgba(255, 255, 255, 0.98));
+}
+
+.preset-card.rose:hover:not(:disabled) {
+    background: linear-gradient(180deg, rgba(223, 109, 103, 0.24), rgba(255, 255, 255, 0.98));
 }
 
 .button {
