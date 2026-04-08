@@ -27,6 +27,7 @@ export interface DeskPreset {
 export interface AppState {
     connectionStatus: DeskStatus;
     isConnected: boolean;
+    isPresetEditorOpen: boolean;
     currentHeight: number | null;
     statusMessage: string;
     latestError: string | null;

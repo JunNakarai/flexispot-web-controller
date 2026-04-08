@@ -18,6 +18,7 @@ export class FlexiSpotApp {
     private state: AppState = {
         connectionStatus: 'idle',
         isConnected: false,
+        isPresetEditorOpen: false,
         currentHeight: null,
         statusMessage: 'Secure dashboard ready',
         latestError: null,
@@ -31,12 +32,54 @@ export class FlexiSpotApp {
         capturePaused: false
     };
     private presets: DeskPreset[] = loadPresets();
+    private presetDrafts: Record<CommandName, string> = createPresetDrafts(this.presets);
     private history: HeightSample[] = [];
     private dailyHeightHistory: DailyHeightRecord[] = loadDailyHeightHistory(getTodayKey());
     private lastPersistedHeight: DailyHeightRecord | null = this.dailyHeightHistory.at(-1) ?? null;
     private sessionStartedAt: number | null = null;
     private recentChartHistory: HeightSample[] = [];
     private lastRecentChartSampleAt: number | null = null;
+    private readonly handleDocumentKeyDown = (event: KeyboardEvent) => {
+        if (this.state.isPresetEditorOpen && event.code === 'Escape') {
+            event.preventDefault();
+            this.closePresetEditor();
+            return;
+        }
+
+        if (!this.state.isConnected || event.repeat || isTypingTarget(event.target)) {
+            return;
+        }
+
+        if (event.code === 'ArrowUp') {
+            event.preventDefault();
+            this.startManual('UP');
+        } else if (event.code === 'ArrowDown') {
+            event.preventDefault();
+            this.startManual('DOWN');
+        } else if (event.code === 'Digit1') {
+            event.preventDefault();
+            void this.runPreset('PRESET1');
+        } else if (event.code === 'Digit2') {
+            event.preventDefault();
+            void this.runPreset('PRESET2');
+        } else if (event.code === 'KeyS') {
+            event.preventDefault();
+            void this.runPreset('SITTING');
+        } else if (event.code === 'KeyT') {
+            event.preventDefault();
+            void this.runPreset('STANDING');
+        }
+    };
+    private readonly handleDocumentKeyUp = (event: KeyboardEvent) => {
+        if (isTypingTarget(event.target)) {
+            return;
+        }
+
+        if (event.code === 'ArrowUp' || event.code === 'ArrowDown') {
+            event.preventDefault();
+            this.stopManual();
+        }
+    };
 
     constructor(root: HTMLDivElement) {
         this.root = root;
@@ -110,6 +153,8 @@ export class FlexiSpotApp {
 
         this.render();
         this.attachEvents();
+        document.addEventListener('keydown', this.handleDocumentKeyDown);
+        document.addEventListener('keyup', this.handleDocumentKeyUp);
     }
 
     private patchState(next: Partial<AppState>): void {
@@ -172,8 +217,8 @@ export class FlexiSpotApp {
                         </div>
                         <p class="panel-body">${this.escapeHtml(this.state.statusMessage)}</p>
                         <div class="button-row">
-                            <button class="button primary" data-action="connect" ${!supported || !secure || this.state.isConnected ? 'disabled' : ''}>Connect</button>
-                            <button class="button secondary" data-action="disconnect" ${this.state.isConnected ? '' : 'disabled'}>Disconnect</button>
+                            <button class="button primary" data-action="connect" aria-label="Connect to desk" ${!supported || !secure || this.state.isConnected ? 'disabled' : ''}>Connect</button>
+                            <button class="button secondary" data-action="disconnect" aria-label="Disconnect from desk" ${this.state.isConnected ? '' : 'disabled'}>Disconnect</button>
                         </div>
                         <ul class="check-list">
                             <li class="${supported ? 'ok' : 'warn'}">Chrome / Edge 系ブラウザ</li>
@@ -191,11 +236,11 @@ export class FlexiSpotApp {
                             <p class="shortcut-hint">Arrow Up / Arrow Down</p>
                         </div>
                         <div class="motion-grid">
-                            <button class="control control-up" data-hold="UP" ${this.state.isConnected ? '' : 'disabled'}>
+                            <button class="control control-up" data-hold="UP" aria-label="Raise desk while pressed" ${this.state.isConnected ? '' : 'disabled'}>
                                 <span>Raise</span>
                                 <strong>UP</strong>
                             </button>
-                            <button class="control control-down" data-hold="DOWN" ${this.state.isConnected ? '' : 'disabled'}>
+                            <button class="control control-down" data-hold="DOWN" aria-label="Lower desk while pressed" ${this.state.isConnected ? '' : 'disabled'}>
                                 <span>Lower</span>
                                 <strong>DOWN</strong>
                             </button>
@@ -209,7 +254,7 @@ export class FlexiSpotApp {
                                 <p class="panel-kicker">Quick Scenes</p>
                                 <h2>Preset Deck</h2>
                             </div>
-                            <button class="button ghost" data-action="customize">Labels</button>
+                            <button class="button ghost" data-action="customize" aria-haspopup="dialog" aria-expanded="${this.state.isPresetEditorOpen ? 'true' : 'false'}">Labels</button>
                         </div>
                         <div class="preset-grid">
                             ${this.presets.map((preset) => this.renderPreset(preset)).join('')}
@@ -323,10 +368,10 @@ export class FlexiSpotApp {
                                 <h2>Serial RX Monitor</h2>
                             </div>
                             <div class="actions-inline">
-                                <button class="button ghost small" data-action="wake" ${this.state.isConnected ? '' : 'disabled'}>Send Wake</button>
-                                <button class="button ghost small" data-action="pause">${this.state.capturePaused ? 'Resume' : 'Pause'}</button>
-                                <button class="button ghost small" data-action="copy" ${this.state.rawCapture.length > 0 ? '' : 'disabled'}>Copy</button>
-                                <button class="button ghost small" data-action="clear">Clear</button>
+                                <button class="button ghost small" data-action="wake" aria-label="Send wake command" ${this.state.isConnected ? '' : 'disabled'}>Send Wake</button>
+                                <button class="button ghost small" data-action="pause" aria-pressed="${this.state.capturePaused ? 'true' : 'false'}">${this.state.capturePaused ? 'Resume' : 'Pause'}</button>
+                                <button class="button ghost small" data-action="copy" aria-label="Copy captured serial data" ${this.state.rawCapture.length > 0 ? '' : 'disabled'}>Copy</button>
+                                <button class="button ghost small" data-action="clear" aria-label="Clear captured serial data">Clear</button>
                             </div>
                         </div>
                         <dl class="facts">
@@ -358,6 +403,8 @@ export class FlexiSpotApp {
                         <button class="button ghost small" data-action="dismiss-error">Dismiss</button>
                     </section>
                 ` : ''}
+
+                ${this.state.isPresetEditorOpen ? this.renderPresetEditor() : ''}
             </div>
         `;
     }
@@ -379,7 +426,7 @@ export class FlexiSpotApp {
         });
 
         this.root.querySelector('[data-action="customize"]')?.addEventListener('click', () => {
-            this.customizeLabels();
+            this.openPresetEditor();
         });
 
         this.root.querySelector('[data-action="wake"]')?.addEventListener('click', () => {
@@ -397,11 +444,27 @@ export class FlexiSpotApp {
         });
 
         this.root.querySelector('[data-action="clear"]')?.addEventListener('click', () => {
+            this.serial.resetDiagnostics();
             this.patchState({
                 rawPreview: [],
                 rawCapture: [],
                 receivedChunkCount: 0,
                 receivedByteCount: 0
+            });
+        });
+
+        this.root.querySelector('[data-action="close-preset-editor"]')?.addEventListener('click', () => {
+            this.closePresetEditor();
+        });
+
+        this.root.querySelector('[data-action="save-preset-labels"]')?.addEventListener('click', () => {
+            this.savePresetDrafts();
+        });
+
+        this.root.querySelectorAll<HTMLInputElement>('[data-preset-input]').forEach((input) => {
+            input.addEventListener('input', () => {
+                const presetId = input.dataset.presetInput as CommandName;
+                this.handlePresetDraftInput(presetId, input.value);
             });
         });
 
@@ -422,42 +485,9 @@ export class FlexiSpotApp {
             button.addEventListener('pointercancel', stop);
         });
 
-        document.onkeydown = (event: KeyboardEvent) => {
-            if (!this.state.isConnected) {
-                return;
-            }
-
-            if (event.repeat) {
-                return;
-            }
-
-            if (event.code === 'ArrowUp') {
-                event.preventDefault();
-                this.startManual('UP');
-            } else if (event.code === 'ArrowDown') {
-                event.preventDefault();
-                this.startManual('DOWN');
-            } else if (event.code === 'Digit1') {
-                event.preventDefault();
-                void this.runPreset('PRESET1');
-            } else if (event.code === 'Digit2') {
-                event.preventDefault();
-                void this.runPreset('PRESET2');
-            } else if (event.code === 'KeyS') {
-                event.preventDefault();
-                void this.runPreset('SITTING');
-            } else if (event.code === 'KeyT') {
-                event.preventDefault();
-                void this.runPreset('STANDING');
-            }
-        };
-
-        document.onkeyup = (event: KeyboardEvent) => {
-            if (event.code === 'ArrowUp' || event.code === 'ArrowDown') {
-                event.preventDefault();
-                this.stopManual();
-            }
-        };
+        if (this.state.isPresetEditorOpen) {
+            this.root.querySelector<HTMLInputElement>('[data-preset-input]')?.focus();
+        }
     }
 
     private async handleConnect(): Promise<void> {
@@ -557,19 +587,72 @@ export class FlexiSpotApp {
         }
     }
 
-    private customizeLabels(): void {
-        const next = this.presets.map((preset) => {
-            const label = window.prompt(`${preset.id} の表示名`, preset.label);
-            return {
-                ...preset,
-                label: label?.trim() || preset.label
-            };
+    private openPresetEditor(): void {
+        this.presetDrafts = createPresetDrafts(this.presets);
+        this.patchState({
+            isPresetEditorOpen: true
         });
+    }
+
+    private closePresetEditor(): void {
+        this.patchState({
+            isPresetEditorOpen: false
+        });
+    }
+
+    private handlePresetDraftInput(command: CommandName, value: string): void {
+        this.presetDrafts = {
+            ...this.presetDrafts,
+            [command]: value
+        };
+    }
+
+    private savePresetDrafts(): void {
+        const next = this.presets.map((preset) => ({
+            ...preset,
+            label: this.presetDrafts[preset.id].trim() || preset.label
+        }));
 
         this.presets = next;
         savePresets(next);
-        this.render();
-        this.attachEvents();
+        this.patchState({
+            isPresetEditorOpen: false,
+            statusMessage: 'Preset labels updated'
+        });
+    }
+
+    private renderPresetEditor(): string {
+        return `
+            <div class="modal-scrim" data-action="close-preset-editor"></div>
+            <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="preset-editor-title">
+                <div class="panel-head modal-head">
+                    <div>
+                        <p class="panel-kicker">Quick Scenes</p>
+                        <h2 id="preset-editor-title">Preset Labels</h2>
+                    </div>
+                    <button class="button ghost small" data-action="close-preset-editor" aria-label="Close preset editor">Close</button>
+                </div>
+                <div class="preset-editor-grid">
+                    ${this.presets.map((preset) => `
+                        <label class="preset-editor-field">
+                            <span>${preset.id}</span>
+                            <input
+                                type="text"
+                                maxlength="24"
+                                value="${this.escapeAttribute(this.presetDrafts[preset.id] ?? preset.label)}"
+                                data-preset-input="${preset.id}"
+                                aria-label="${preset.id} label"
+                            />
+                        </label>
+                    `).join('')}
+                </div>
+                <p class="muted">Esc でも閉じられます。空欄は現在のラベルを維持します。</p>
+                <div class="button-row modal-actions">
+                    <button class="button secondary" data-action="close-preset-editor">Cancel</button>
+                    <button class="button primary" data-action="save-preset-labels">Save</button>
+                </div>
+            </section>
+        `;
     }
 
     private renderPreset(preset: DeskPreset): string {
@@ -761,6 +844,15 @@ export class FlexiSpotApp {
         return div.innerHTML;
     }
 
+    private escapeAttribute(text: string): string {
+        return text
+            .replaceAll('&', '&amp;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;');
+    }
+
     private async copyCapture(): Promise<void> {
         if (this.state.rawCapture.length === 0) {
             return;
@@ -899,6 +991,21 @@ function toMessage(error: unknown): string {
     return 'Unknown application error';
 }
 
+function createPresetDrafts(presets: DeskPreset[]): Record<CommandName, string> {
+    return presets.reduce<Record<CommandName, string>>((accumulator, preset) => {
+        accumulator[preset.id] = preset.label;
+        return accumulator;
+    }, {
+        WAKE_UP: '',
+        UP: '',
+        DOWN: '',
+        PRESET1: '',
+        PRESET2: '',
+        SITTING: '',
+        STANDING: ''
+    });
+}
+
 function formatHex(bytes: number[]): string {
     return bytes.map((byte) => byte.toString(16).padStart(2, '0')).join(' ');
 }
@@ -925,4 +1032,15 @@ function formatDuration(durationMs: number): string {
     }
 
     return `${hours}h ${minutes}m`;
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+
+    return target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || target.isContentEditable;
 }
