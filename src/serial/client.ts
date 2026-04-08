@@ -145,6 +145,12 @@ export class FlexiSpotSerialClient {
         }
     }
 
+    resetDiagnostics(): void {
+        this.readBuffer = [];
+        this.chunkCount = 0;
+        this.totalBytes = 0;
+    }
+
     private startWakeHeartbeat(): void {
         this.stopWakeHeartbeat();
 

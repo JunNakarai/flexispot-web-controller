@@ -101,6 +101,12 @@ npm run preview
 npm run typecheck
 ```
 
+ユニットテスト:
+
+```bash
+npm test
+```
+
 ローカル HTTPS で確認したい場合は、証明書を用意したうえで任意の HTTPS サーバーを使ってください。Web Serial は secure context 前提のため、`http://` の通常配信では動作しません。
 
 ## 利用条件
@@ -121,6 +127,7 @@ npm run typecheck
 - プリセット表示名のローカル保存
 - シリアル受信バイトの診断モニタ
 - キーボードショートカット
+- プリセット表示名のモーダル編集
 
 ## データ保存
 
@@ -152,12 +159,12 @@ npm run typecheck
 
 ## デプロイ
 
-GitHub Actions で依存をインストールし、`npm run build` した `dist/` を GitHub Pages に配信します。
+GitHub Actions で `npm test` と `npm run build` を実行し、生成された `dist/` を GitHub Pages に配信します。
 
 ## 直近の拡張候補
 
 - 設定モーダルの実装
 - プリセット管理の拡張
 - アクセシビリティ改善
-- テスト自動化
+- UI スモークテストの追加
 - PWA 化
