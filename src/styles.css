@@ -76,15 +76,7 @@ button {
     padding: 32px 0 48px;
 }
 
-.hero-panel {
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.9fr);
-    gap: 24px;
-    margin-bottom: 24px;
-}
-
-.hero-copy,
-.hero-metric,
+.top-strip,
 .panel,
 .toast {
     border: 1px solid var(--panel-border);
@@ -93,21 +85,26 @@ button {
     box-shadow: var(--shadow);
 }
 
-.hero-copy {
-    border-radius: 32px;
-    padding: 32px;
-    position: relative;
-    overflow: hidden;
+.top-strip {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    border-radius: 28px;
+    padding: 24px 28px;
+    margin-bottom: 18px;
 }
 
-.hero-copy::after {
-    content: '';
-    position: absolute;
-    inset: auto -40px -50px auto;
-    width: 220px;
-    height: 220px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(57, 185, 132, 0.28), transparent 72%);
+.top-strip-copy {
+    max-width: 620px;
+}
+
+.top-strip-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .eyebrow,
@@ -121,30 +118,24 @@ button {
     margin: 0 0 12px;
 }
 
-.hero-copy h1 {
+.top-strip h1 {
     margin: 0;
-    max-width: 12ch;
-    font-size: clamp(2.8rem, 5vw, 4.8rem);
-    line-height: 0.95;
+    font-size: clamp(2.2rem, 4vw, 3.4rem);
+    line-height: 0.98;
 }
 
 .lede {
-    margin: 20px 0 0;
-    max-width: 56ch;
+    margin: 10px 0 0;
+    max-width: 48ch;
     color: var(--muted);
-    font-size: 1.02rem;
-    line-height: 1.75;
+    font-size: 0.98rem;
+    line-height: 1.6;
 }
 
 .hero-badges {
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
-    margin-top: 24px;
-}
-
-.hero-actions {
-    margin-top: 24px;
+    gap: 10px;
 }
 
 .badge,
@@ -186,23 +177,15 @@ button {
     color: #1f6e87;
 }
 
-.hero-metric {
-    border-radius: 32px;
-    padding: 28px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-}
-
 .metric-value-row {
     display: flex;
     align-items: baseline;
     gap: 8px;
-    margin: 10px 0 18px;
+    margin: 6px 0 16px;
 }
 
 .metric-value {
-    font-size: clamp(3.4rem, 7vw, 5rem);
+    font-size: clamp(3rem, 6vw, 4.2rem);
     line-height: 1;
     font-weight: 800;
 }
@@ -253,26 +236,27 @@ button {
     gap: 18px;
 }
 
+.dashboard-grid-priority {
+    margin-bottom: 18px;
+}
+
 .panel {
     border-radius: 28px;
     padding: 24px;
     grid-column: span 4;
 }
 
-.panel-strong {
-    background: var(--panel-strong);
-    color: #f0f7f2;
-}
-
-.panel-strong .panel-kicker,
-.panel-strong .panel-body,
-.panel-strong .check-list,
-.panel-strong h2 {
-    color: inherit;
-}
-
 .panel-wide {
     grid-column: span 8;
+}
+
+.panel-metric {
+    grid-column: span 5;
+}
+
+.panel-connection,
+.panel-motion {
+    grid-column: span 3;
 }
 
 .panel-head {
@@ -413,39 +397,14 @@ button {
     outline-offset: 3px;
 }
 
-.check-list,
 .facts {
     margin: 18px 0 0;
     padding: 0;
 }
 
-.check-list {
-    list-style: none;
-    display: grid;
-    gap: 10px;
-}
-
-.check-list li {
-    padding: 10px 12px;
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.08);
-}
-
-.check-list li.ok {
-    color: #a8f0c8;
-}
-
-.check-list li.warn {
-    color: #ffd696;
-}
-
-.check-list li.neutral {
-    color: rgba(240, 247, 242, 0.8);
-}
-
 .control {
-    min-height: 160px;
-    padding: 20px;
+    min-height: 148px;
+    padding: 18px;
     text-align: left;
     color: white;
     cursor: pointer;
@@ -518,6 +477,13 @@ button {
     text-transform: uppercase;
     letter-spacing: 0.12em;
     color: var(--muted);
+}
+
+.support-note {
+    margin: 14px 0 0;
+    color: var(--muted);
+    font-size: 0.88rem;
+    line-height: 1.55;
 }
 
 .history-list {
@@ -805,12 +771,16 @@ button {
 }
 
 @media (max-width: 980px) {
-    .hero-panel {
-        grid-template-columns: 1fr;
+    .top-strip {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .panel,
-    .panel-wide {
+    .panel-wide,
+    .panel-metric,
+    .panel-connection,
+    .panel-motion {
         grid-column: span 12;
     }
 }
@@ -821,8 +791,7 @@ button {
         padding-top: 12px;
     }
 
-    .hero-copy,
-    .hero-metric,
+    .top-strip,
     .panel {
         border-radius: 24px;
         padding: 20px;

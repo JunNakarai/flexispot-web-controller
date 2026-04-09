@@ -200,26 +200,27 @@ export class FlexiSpotApp {
             : clamp(((this.state.currentHeight - HEIGHT_MIN) / (HEIGHT_MAX - HEIGHT_MIN)) * 100, 0, 100);
         const recentChart = this.renderSessionChart();
         const chart = this.renderDailyChart();
+        const supportMessage = this.getSupportMessage(supported, secure);
 
         this.root.innerHTML = `
             <div class="shell">
-                <section class="hero-panel">
-                    <div class="hero-copy">
-                        <p class="eyebrow">FlexiSpot Control Deck</p>
-                        <h1>Hardware control UI rebuilt for the browser.</h1>
-                        <p class="lede">
-                            スマートホームと IoT ダッシュボードの情報設計を取り入れ、接続状態、姿勢切り替え、リアルタイム高さ確認を一画面で完結させます。
-                        </p>
+                <section class="top-strip">
+                    <div class="top-strip-copy">
+                        <p class="eyebrow">FlexiSpot Controller</p>
+                        <h1>Connect and move.</h1>
+                        <p class="lede">ブラウザから昇降デスクを接続して、そのまま操作します。</p>
+                    </div>
+                    <div class="top-strip-actions">
                         <div class="hero-badges">
-                            <span class="badge ${supported ? 'ok' : 'warn'}">${supported ? 'Web Serial Ready' : 'Browser Unsupported'}</span>
-                            <span class="badge ${secure ? 'ok' : 'warn'}">${secure ? 'Secure Context' : 'HTTPS Required'}</span>
+                            <span class="badge ${this.statusTone(this.state.connectionStatus)}">${this.statusLabel(this.state.connectionStatus)}</span>
                             <span class="badge neutral">v${APP_VERSION}</span>
                         </div>
-                        <div class="hero-actions">
-                            <button class="button ghost" data-action="open-settings">Settings</button>
-                        </div>
+                        <button class="button ghost" data-action="open-settings">Settings</button>
                     </div>
-                    <div class="hero-metric">
+                </section>
+
+                <section class="dashboard-grid dashboard-grid-priority">
+                    <article class="panel panel-metric">
                         <p class="metric-label">Current Height</p>
                         <div class="metric-value-row">
                             <span class="metric-value">${this.state.currentHeight?.toFixed(1) ?? '--'}</span>
@@ -233,37 +234,28 @@ export class FlexiSpotApp {
                             <span>${HEIGHT_MAX} cm</span>
                         </div>
                         <p class="metric-caption">${this.formatHeightStatus()}</p>
-                    </div>
-                </section>
+                    </article>
 
-                <section class="dashboard-grid">
-                    <article class="panel panel-strong">
+                    <article class="panel panel-connection">
                         <div class="panel-head">
                             <div>
                                 <p class="panel-kicker">Connection</p>
                                 <h2>Desk Link</h2>
                             </div>
-                            <span class="status-pill ${this.statusTone(this.state.connectionStatus)}">
-                                ${this.statusLabel(this.state.connectionStatus)}
-                            </span>
                         </div>
                         <p class="panel-body" role="status" aria-live="polite">${this.escapeHtml(this.state.statusMessage)}</p>
                         <div class="button-row">
                             <button class="button primary" data-action="connect" aria-label="Connect to desk" ${!supported || !secure || this.state.isConnected ? 'disabled' : ''}>Connect</button>
                             <button class="button secondary" data-action="disconnect" aria-label="Disconnect from desk" ${this.state.isConnected ? '' : 'disabled'}>Disconnect</button>
                         </div>
-                        <ul class="check-list">
-                            <li class="${supported ? 'ok' : 'warn'}">Chrome / Edge 系ブラウザ</li>
-                            <li class="${secure ? 'ok' : 'warn'}">HTTPS または localhost</li>
-                            <li class="${this.state.isConnected ? 'ok' : 'neutral'}">ユーザーがシリアルポートを許可</li>
-                        </ul>
+                        ${supportMessage ? `<p class="support-note">${this.escapeHtml(supportMessage)}</p>` : ''}
                     </article>
 
-                    <article class="panel">
+                    <article class="panel panel-motion">
                         <div class="panel-head">
                             <div>
                                 <p class="panel-kicker">Manual Control</p>
-                                <h2>Live Motion</h2>
+                                <h2>Move</h2>
                             </div>
                             <p class="shortcut-hint">Arrow Up / Arrow Down</p>
                         </div>
@@ -277,14 +269,15 @@ export class FlexiSpotApp {
                                 <strong>DOWN</strong>
                             </button>
                         </div>
-                        <p class="muted">押している間だけコマンドを継続送信します。離した時点で停止します。</p>
                     </article>
+                </section>
 
+                <section class="dashboard-grid">
                     <article class="panel panel-wide">
                         <div class="panel-head">
                             <div>
                                 <p class="panel-kicker">Quick Scenes</p>
-                                <h2>Preset Deck</h2>
+                                <h2>Presets</h2>
                             </div>
                             <button class="button ghost" data-action="customize" aria-haspopup="dialog" aria-expanded="${this.state.isPresetEditorOpen ? 'true' : 'false'}">Labels</button>
                         </div>
@@ -1207,6 +1200,22 @@ export class FlexiSpotApp {
 
         if (this.state.settingsOpen) {
             return document.getElementById(SETTINGS_MODAL_ID);
+        }
+
+        return null;
+    }
+
+    private getSupportMessage(supported: boolean, secure: boolean): string | null {
+        if (!supported) {
+            return 'Chrome / Edge 系ブラウザで開いてください。';
+        }
+
+        if (!secure) {
+            return 'HTTPS または localhost で開いてください。';
+        }
+
+        if (!this.state.isConnected) {
+            return '接続すると操作と高さ表示が有効になります。';
         }
 
         return null;
