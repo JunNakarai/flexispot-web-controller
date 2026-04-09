@@ -12,6 +12,7 @@ const HEIGHT_SAVE_DELTA_CM = 0.4;
 const RECENT_CHART_SAMPLE_INTERVAL_MS = 1_000;
 const RECENT_CHART_MAX_SAMPLES = 900;
 const SETTINGS_MODAL_ID = 'settings-modal';
+const PRESET_MODAL_ID = 'preset-editor-modal';
 
 export class FlexiSpotApp {
     private root: HTMLDivElement;
@@ -43,6 +44,12 @@ export class FlexiSpotApp {
     private recentChartHistory: HeightSample[] = [];
     private lastRecentChartSampleAt: number | null = null;
     private readonly handleDocumentKeyDown = (event: KeyboardEvent) => {
+        const activeModal = this.getActiveModalElement();
+        if (event.key === 'Tab' && activeModal) {
+            trapFocusWithin(activeModal, event);
+            return;
+        }
+
         if (this.state.settingsOpen && event.code === 'Escape') {
             event.preventDefault();
             this.patchState({ settingsOpen: false });
@@ -173,6 +180,12 @@ export class FlexiSpotApp {
         document.addEventListener('keyup', this.handleDocumentKeyUp);
     }
 
+    unmount(): void {
+        document.removeEventListener('keydown', this.handleDocumentKeyDown);
+        document.removeEventListener('keyup', this.handleDocumentKeyUp);
+        this.root.innerHTML = '';
+    }
+
     private patchState(next: Partial<AppState>): void {
         this.state = { ...this.state, ...next };
         this.render();
@@ -234,7 +247,7 @@ export class FlexiSpotApp {
                                 ${this.statusLabel(this.state.connectionStatus)}
                             </span>
                         </div>
-                        <p class="panel-body">${this.escapeHtml(this.state.statusMessage)}</p>
+                        <p class="panel-body" role="status" aria-live="polite">${this.escapeHtml(this.state.statusMessage)}</p>
                         <div class="button-row">
                             <button class="button primary" data-action="connect" aria-label="Connect to desk" ${!supported || !secure || this.state.isConnected ? 'disabled' : ''}>Connect</button>
                             <button class="button secondary" data-action="disconnect" aria-label="Disconnect from desk" ${this.state.isConnected ? '' : 'disabled'}>Disconnect</button>
@@ -415,7 +428,7 @@ export class FlexiSpotApp {
                                 <dd>${this.state.currentHeight === null ? 'No parsed height yet' : 'Height parsed'}</dd>
                             </div>
                         </dl>
-                        <div class="raw-log">
+                        <div class="raw-log" role="log" aria-live="polite" aria-label="Serial receive log">
                             ${this.renderRawPreview()}
                         </div>
                     </article>
@@ -538,6 +551,10 @@ export class FlexiSpotApp {
 
         if (this.state.isPresetEditorOpen) {
             this.root.querySelector<HTMLInputElement>('[data-preset-input]')?.focus();
+        }
+
+        if (this.state.settingsOpen) {
+            this.root.querySelector<HTMLElement>(`#${SETTINGS_MODAL_ID} button, #${SETTINGS_MODAL_ID} input, #${SETTINGS_MODAL_ID} select`)?.focus();
         }
     }
 
@@ -676,7 +693,7 @@ export class FlexiSpotApp {
     private renderPresetEditor(): string {
         return `
             <div class="modal-scrim" data-action="close-preset-editor"></div>
-            <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="preset-editor-title">
+            <section class="modal-card" id="${PRESET_MODAL_ID}" role="dialog" aria-modal="true" aria-labelledby="preset-editor-title" aria-describedby="preset-editor-help">
                 <div class="panel-head modal-head">
                     <div>
                         <p class="panel-kicker">Quick Scenes</p>
@@ -698,7 +715,7 @@ export class FlexiSpotApp {
                         </label>
                     `).join('')}
                 </div>
-                <p class="muted">Esc でも閉じられます。空欄は現在のラベルを維持します。</p>
+                <p class="muted" id="preset-editor-help">Esc でも閉じられます。空欄は現在のラベルを維持します。</p>
                 <div class="button-row modal-actions">
                     <button class="button secondary" data-action="close-preset-editor">Cancel</button>
                     <button class="button primary" data-action="save-preset-labels">Save</button>
@@ -1182,6 +1199,18 @@ export class FlexiSpotApp {
 
         void new Notification(title, { body });
     }
+
+    private getActiveModalElement(): HTMLElement | null {
+        if (this.state.isPresetEditorOpen) {
+            return document.getElementById(PRESET_MODAL_ID);
+        }
+
+        if (this.state.settingsOpen) {
+            return document.getElementById(SETTINGS_MODAL_ID);
+        }
+
+        return null;
+    }
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -1254,4 +1283,32 @@ function isTypingTarget(target: EventTarget | null): boolean {
         || target instanceof HTMLTextAreaElement
         || target instanceof HTMLSelectElement
         || target.isContentEditable;
+}
+
+function trapFocusWithin(container: HTMLElement, event: KeyboardEvent): void {
+    const focusable = getFocusableElements(container);
+    if (focusable.length === 0) {
+        return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+
+    if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+        return;
+    }
+
+    if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+    return Array.from(container.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter((element) => !element.hasAttribute('hidden'));
 }
