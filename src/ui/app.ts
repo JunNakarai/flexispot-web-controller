@@ -205,9 +205,9 @@ export class FlexiSpotApp {
             <div class="shell">
                 <section class="top-strip">
                     <div class="top-strip-copy">
-                        <p class="eyebrow">FlexiSpot Controller</p>
-                        <h1>Connect and move.</h1>
-                        <p class="lede">ブラウザから昇降デスクを接続して、そのまま操作します。</p>
+                        <p class="eyebrow">FlexiSpot Desk Controller</p>
+                        <h1>Control your desk from PC.</h1>
+                        <p class="lede">Chrome / Edge で開いて Connect を押すと、FlexiSpot 昇降デスクをブラウザから操作できます。</p>
                     </div>
                     <div class="top-strip-actions">
                         <div class="hero-badges">
