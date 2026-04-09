@@ -291,6 +291,23 @@ button {
     justify-content: flex-end;
 }
 
+.diagnostics-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.diagnostics-summary::-webkit-details-marker {
+    display: none;
+}
+
+.diagnostics-content {
+    margin-top: 18px;
+}
+
 .button-row,
 .motion-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -609,6 +626,10 @@ button {
     padding-bottom: 0;
 }
 
+.facts-compact {
+    margin-top: 16px;
+}
+
 .facts dt {
     color: var(--muted);
     font-size: 0.84rem;
@@ -804,7 +825,8 @@ button {
     }
 
     .panel-head,
-    .toast {
+    .toast,
+    .diagnostics-summary {
         flex-direction: column;
         align-items: stretch;
     }

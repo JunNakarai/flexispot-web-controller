@@ -198,7 +198,6 @@ export class FlexiSpotApp {
         const heightPercentage = this.state.currentHeight === null
             ? 0
             : clamp(((this.state.currentHeight - HEIGHT_MIN) / (HEIGHT_MAX - HEIGHT_MIN)) * 100, 0, 100);
-        const recentChart = this.renderSessionChart();
         const chart = this.renderDailyChart();
         const supportMessage = this.getSupportMessage(supported, secure);
 
@@ -302,40 +301,8 @@ export class FlexiSpotApp {
                     <article class="panel panel-wide">
                         <div class="panel-head">
                             <div>
-                                <p class="panel-kicker">Live Timeline</p>
-                                <h2>Session Height Flow</h2>
-                            </div>
-                            <p class="shortcut-hint">${recentChart.sampleCount} samples / 1 sec</p>
-                        </div>
-                        <div class="chart-card">
-                            ${recentChart.svg}
-                            <div class="chart-footer">
-                                <span>${recentChart.startLabel}</span>
-                                <span>${recentChart.middleLabel}</span>
-                                <span>${recentChart.endLabel}</span>
-                            </div>
-                        </div>
-                        <div class="chart-stats">
-                            <div>
-                                <dt>Min</dt>
-                                <dd>${recentChart.minLabel}</dd>
-                            </div>
-                            <div>
-                                <dt>Max</dt>
-                                <dd>${recentChart.maxLabel}</dd>
-                            </div>
-                            <div>
-                                <dt>Duration</dt>
-                                <dd>${recentChart.durationLabel}</dd>
-                            </div>
-                        </div>
-                    </article>
-
-                    <article class="panel panel-wide">
-                        <div class="panel-head">
-                            <div>
                                 <p class="panel-kicker">Timeline</p>
-                                <h2>Daily Height Map</h2>
+                                <h2>Today</h2>
                             </div>
                             <p class="shortcut-hint">${chart.sampleCount} samples today</p>
                         </div>
@@ -395,35 +362,40 @@ export class FlexiSpotApp {
                     </article>
 
                     <article class="panel panel-wide">
-                        <div class="panel-head">
-                            <div>
-                                <p class="panel-kicker">Diagnostics</p>
-                                <h2>Serial RX Monitor</h2>
+                        <details class="diagnostics-panel">
+                            <summary class="diagnostics-summary">
+                                <div>
+                                    <p class="panel-kicker">Diagnostics</p>
+                                    <h2>Serial RX Monitor</h2>
+                                </div>
+                                <span class="shortcut-hint">${String(this.state.receivedChunkCount)} chunks / ${String(this.state.receivedByteCount)} bytes</span>
+                            </summary>
+                            <div class="diagnostics-content">
+                                <div class="actions-inline">
+                                    <button class="button ghost small" data-action="wake" aria-label="Send wake command" ${this.state.isConnected ? '' : 'disabled'}>Send Wake</button>
+                                    <button class="button ghost small" data-action="pause" aria-pressed="${this.state.capturePaused ? 'true' : 'false'}">${this.state.capturePaused ? 'Resume' : 'Pause'}</button>
+                                    <button class="button ghost small" data-action="copy" aria-label="Copy captured serial data" ${this.state.rawCapture.length > 0 ? '' : 'disabled'}>Copy</button>
+                                    <button class="button ghost small" data-action="clear" aria-label="Clear captured serial data">Clear</button>
+                                </div>
+                                <dl class="facts facts-compact">
+                                    <div>
+                                        <dt>RX Chunks</dt>
+                                        <dd>${String(this.state.receivedChunkCount)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>RX Bytes</dt>
+                                        <dd>${String(this.state.receivedByteCount)}</dd>
+                                    </div>
+                                    <div>
+                                        <dt>Decode State</dt>
+                                        <dd>${this.state.currentHeight === null ? 'No parsed height yet' : 'Height parsed'}</dd>
+                                    </div>
+                                </dl>
+                                <div class="raw-log" role="log" aria-live="polite" aria-label="Serial receive log">
+                                    ${this.renderRawPreview()}
+                                </div>
                             </div>
-                            <div class="actions-inline">
-                                <button class="button ghost small" data-action="wake" aria-label="Send wake command" ${this.state.isConnected ? '' : 'disabled'}>Send Wake</button>
-                                <button class="button ghost small" data-action="pause" aria-pressed="${this.state.capturePaused ? 'true' : 'false'}">${this.state.capturePaused ? 'Resume' : 'Pause'}</button>
-                                <button class="button ghost small" data-action="copy" aria-label="Copy captured serial data" ${this.state.rawCapture.length > 0 ? '' : 'disabled'}>Copy</button>
-                                <button class="button ghost small" data-action="clear" aria-label="Clear captured serial data">Clear</button>
-                            </div>
-                        </div>
-                        <dl class="facts">
-                            <div>
-                                <dt>RX Chunks</dt>
-                                <dd>${String(this.state.receivedChunkCount)}</dd>
-                            </div>
-                            <div>
-                                <dt>RX Bytes</dt>
-                                <dd>${String(this.state.receivedByteCount)}</dd>
-                            </div>
-                            <div>
-                                <dt>Decode State</dt>
-                                <dd>${this.state.currentHeight === null ? 'No parsed height yet' : 'Height parsed'}</dd>
-                            </div>
-                        </dl>
-                        <div class="raw-log" role="log" aria-live="polite" aria-label="Serial receive log">
-                            ${this.renderRawPreview()}
-                        </div>
+                        </details>
                     </article>
                 </section>
 
