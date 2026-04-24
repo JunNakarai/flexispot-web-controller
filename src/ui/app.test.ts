@@ -182,6 +182,15 @@ describe('FlexiSpotApp UI', () => {
 
         const themeSelect = settingsModal?.querySelector<HTMLSelectElement>('select[name="theme"]');
         themeSelect!.value = 'dark';
+        const standingGoalInput = settingsModal?.querySelector<HTMLInputElement>('input[name="dailyStandingGoalMinutes"]');
+        const maxSittingInput = settingsModal?.querySelector<HTMLInputElement>('input[name="maxSittingMinutes"]');
+        const reminderInput = settingsModal?.querySelector<HTMLInputElement>('input[name="reminderIntervalMinutes"]');
+        expect(standingGoalInput?.value).toBe('120');
+        expect(maxSittingInput?.value).toBe('60');
+        expect(reminderInput?.value).toBe('30');
+        standingGoalInput!.value = '90';
+        maxSittingInput!.value = '45';
+        reminderInput!.value = '20';
         const form = settingsModal?.querySelector<HTMLFormElement>('[data-settings-form]');
         form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
         await flush();
@@ -189,6 +198,7 @@ describe('FlexiSpotApp UI', () => {
         expect(document.getElementById('settings-modal')).toBeNull();
         expect(document.documentElement.dataset.theme).toBe('dark');
         expect(window.localStorage.getItem('flexispot-control-deck-settings-v1')).toContain('"theme":"dark"');
+        expect(window.localStorage.getItem('flexispot-control-deck-settings-v1')).toContain('"dailyStandingGoalMinutes":90');
     });
 
     it('ignores shortcuts while typing in the preset editor', async () => {

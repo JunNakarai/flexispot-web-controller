@@ -29,6 +29,13 @@ export interface AppSettings {
     notificationsEnabled: boolean;
     diagnosticsAutoCapture: boolean;
     commandIntervalMs: number;
+    healthGoals: HealthGoalSettings;
+}
+
+export interface HealthGoalSettings {
+    dailyStandingGoalMinutes: number;
+    maxSittingMinutes: number;
+    reminderIntervalMinutes: number;
 }
 
 export type CloudAuthStatus =

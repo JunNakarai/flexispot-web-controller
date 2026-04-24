@@ -8,10 +8,11 @@ export function buildDailyHealthSummary(
     options: {
         thresholds?: Partial<PostureThresholds>;
         standingGoalMs?: number;
+        standingGoalMinutes?: number;
     } = {}
 ): DailyHealthSummary {
     const sessions = buildPostureSessions(records, options.thresholds);
-    const standingGoalMs = normalizeGoal(options.standingGoalMs);
+    const standingGoalMs = normalizeGoal(options.standingGoalMs, options.standingGoalMinutes);
     const standingMs = sumDuration(sessions, 'standing');
     const sittingMs = sumDuration(sessions, 'sitting');
     const longestSittingMs = sessions
@@ -47,10 +48,14 @@ function countPostureTransitions(sessions: PostureSession[]): number {
     }, 0);
 }
 
-function normalizeGoal(goalMs: number | undefined): number {
-    if (typeof goalMs !== 'number' || !Number.isFinite(goalMs) || goalMs < 0) {
-        return DEFAULT_STANDING_GOAL_MS;
+function normalizeGoal(goalMs: number | undefined, goalMinutes: number | undefined): number {
+    if (typeof goalMs === 'number' && Number.isFinite(goalMs) && goalMs >= 0) {
+        return goalMs;
     }
 
-    return goalMs;
+    if (typeof goalMinutes === 'number' && Number.isFinite(goalMinutes) && goalMinutes >= 0) {
+        return Math.round(goalMinutes) * 60_000;
+    }
+
+    return DEFAULT_STANDING_GOAL_MS;
 }

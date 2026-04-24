@@ -981,6 +981,25 @@ button {
     gap: 16px;
 }
 
+.settings-fieldset {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.settings-fieldset legend {
+    margin-bottom: 10px;
+    color: var(--muted);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
 .settings-block,
 .settings-toggle {
     display: grid;

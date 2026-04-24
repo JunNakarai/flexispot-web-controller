@@ -82,21 +82,57 @@ describe('storage', () => {
             theme: 'system',
             notificationsEnabled: false,
             diagnosticsAutoCapture: true,
-            commandIntervalMs: 108
+            commandIntervalMs: 108,
+            healthGoals: {
+                dailyStandingGoalMinutes: 120,
+                maxSittingMinutes: 60,
+                reminderIntervalMinutes: 30
+            }
         });
 
         window.localStorage.setItem(SETTINGS_KEY, JSON.stringify({
             theme: 'dark',
             notificationsEnabled: true,
             diagnosticsAutoCapture: false,
-            commandIntervalMs: 12
+            commandIntervalMs: 12,
+            healthGoals: {
+                dailyStandingGoalMinutes: 999,
+                maxSittingMinutes: 3,
+                reminderIntervalMinutes: 181
+            }
         }));
 
         expect(loadSettings()).toEqual({
             theme: 'dark',
             notificationsEnabled: true,
             diagnosticsAutoCapture: false,
-            commandIntervalMs: 48
+            commandIntervalMs: 48,
+            healthGoals: {
+                dailyStandingGoalMinutes: 480,
+                maxSittingMinutes: 15,
+                reminderIntervalMinutes: 180
+            }
+        });
+    });
+
+    it('keeps backward compatibility with settings saved before health goals', () => {
+        window.localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+            theme: 'light',
+            notificationsEnabled: true,
+            diagnosticsAutoCapture: false,
+            commandIntervalMs: 120
+        }));
+
+        expect(loadSettings()).toEqual({
+            theme: 'light',
+            notificationsEnabled: true,
+            diagnosticsAutoCapture: false,
+            commandIntervalMs: 120,
+            healthGoals: {
+                dailyStandingGoalMinutes: 120,
+                maxSittingMinutes: 60,
+                reminderIntervalMinutes: 30
+            }
         });
     });
 
@@ -105,14 +141,24 @@ describe('storage', () => {
             theme: 'light',
             notificationsEnabled: true,
             diagnosticsAutoCapture: false,
-            commandIntervalMs: 999
+            commandIntervalMs: 999,
+            healthGoals: {
+                dailyStandingGoalMinutes: 0,
+                maxSittingMinutes: 999,
+                reminderIntervalMinutes: 3
+            }
         });
 
         expect(saved).toEqual({
             theme: 'light',
             notificationsEnabled: true,
             diagnosticsAutoCapture: false,
-            commandIntervalMs: 500
+            commandIntervalMs: 500,
+            healthGoals: {
+                dailyStandingGoalMinutes: 15,
+                maxSittingMinutes: 240,
+                reminderIntervalMinutes: 5
+            }
         });
         expect(loadSettings()).toEqual(saved);
     });
@@ -167,7 +213,12 @@ describe('storage', () => {
             theme: 'light',
             notificationsEnabled: false,
             diagnosticsAutoCapture: true,
-            commandIntervalMs: 108
+            commandIntervalMs: 108,
+            healthGoals: {
+                dailyStandingGoalMinutes: 90,
+                maxSittingMinutes: 45,
+                reminderIntervalMinutes: 20
+            }
         });
 
         const localSnapshot = loadDataSnapshot();

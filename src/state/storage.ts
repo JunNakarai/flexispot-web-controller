@@ -14,6 +14,12 @@ const MAX_DAYS = 14;
 const MAX_SAMPLES_PER_DAY = 1440;
 const MIN_COMMAND_INTERVAL_MS = 48;
 const MAX_COMMAND_INTERVAL_MS = 500;
+const MIN_DAILY_STANDING_GOAL_MINUTES = 15;
+const MAX_DAILY_STANDING_GOAL_MINUTES = 480;
+const MIN_MAX_SITTING_MINUTES = 15;
+const MAX_MAX_SITTING_MINUTES = 240;
+const MIN_REMINDER_INTERVAL_MINUTES = 5;
+const MAX_REMINDER_INTERVAL_MINUTES = 180;
 
 const DEFAULT_PRESETS: DeskPreset[] = [
     {
@@ -50,7 +56,12 @@ const DEFAULT_SETTINGS: AppSettings = {
     theme: 'system',
     notificationsEnabled: false,
     diagnosticsAutoCapture: true,
-    commandIntervalMs: 108
+    commandIntervalMs: 108,
+    healthGoals: {
+        dailyStandingGoalMinutes: 120,
+        maxSittingMinutes: 60,
+        reminderIntervalMinutes: 30
+    }
 };
 
 const DEFAULT_META: PersistedDataMeta = {
@@ -259,8 +270,38 @@ function sanitizeSettings(input: Partial<AppSettings> | null | undefined): AppSe
         diagnosticsAutoCapture: typeof input?.diagnosticsAutoCapture === 'boolean'
             ? input.diagnosticsAutoCapture
             : DEFAULT_SETTINGS.diagnosticsAutoCapture,
-        commandIntervalMs: commandInterval
+        commandIntervalMs: commandInterval,
+        healthGoals: sanitizeHealthGoals(input?.healthGoals)
     };
+}
+
+function sanitizeHealthGoals(input: Partial<AppSettings['healthGoals']> | null | undefined): AppSettings['healthGoals'] {
+    return {
+        dailyStandingGoalMinutes: sanitizeNumber(
+            input?.dailyStandingGoalMinutes,
+            DEFAULT_SETTINGS.healthGoals.dailyStandingGoalMinutes,
+            MIN_DAILY_STANDING_GOAL_MINUTES,
+            MAX_DAILY_STANDING_GOAL_MINUTES
+        ),
+        maxSittingMinutes: sanitizeNumber(
+            input?.maxSittingMinutes,
+            DEFAULT_SETTINGS.healthGoals.maxSittingMinutes,
+            MIN_MAX_SITTING_MINUTES,
+            MAX_MAX_SITTING_MINUTES
+        ),
+        reminderIntervalMinutes: sanitizeNumber(
+            input?.reminderIntervalMinutes,
+            DEFAULT_SETTINGS.healthGoals.reminderIntervalMinutes,
+            MIN_REMINDER_INTERVAL_MINUTES,
+            MAX_REMINDER_INTERVAL_MINUTES
+        )
+    };
+}
+
+function sanitizeNumber(value: number | undefined, fallback: number, min: number, max: number): number {
+    return typeof value === 'number' && Number.isFinite(value)
+        ? clamp(Math.round(value), min, max)
+        : fallback;
 }
 
 function sanitizePresets(input: DeskPreset[] | null | undefined): DeskPreset[] {

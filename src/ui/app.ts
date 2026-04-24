@@ -360,7 +360,9 @@ export class FlexiSpotApp {
     }
 
     private renderHealthSummary(): string {
-        const summary = buildDailyHealthSummary(this.dailyHeightHistory);
+        const summary = buildDailyHealthSummary(this.dailyHeightHistory, {
+            standingGoalMinutes: this.settings.healthGoals.dailyStandingGoalMinutes
+        });
 
         if (summary.sampleCount === 0) {
             return `
@@ -778,6 +780,24 @@ export class FlexiSpotApp {
                             <span class="settings-help">UP / DOWN ホールド時の送信間隔です。短くするほど反応は速くなります。</span>
                             <input name="commandIntervalMs" class="settings-field" type="number" min="48" max="500" step="4" value="${String(this.settings.commandIntervalMs)}" />
                         </label>
+                        <fieldset class="settings-fieldset">
+                            <legend>Health goals</legend>
+                            <label class="settings-block">
+                                <span class="settings-label">Daily standing goal</span>
+                                <span class="settings-help">Today の立位目標として表示します。</span>
+                                <input name="dailyStandingGoalMinutes" class="settings-field" type="number" min="15" max="480" step="5" value="${String(this.settings.healthGoals.dailyStandingGoalMinutes)}" />
+                            </label>
+                            <label class="settings-block">
+                                <span class="settings-label">Max sitting streak</span>
+                                <span class="settings-help">座りっぱなし判定の上限です。通知機能の土台として保存します。</span>
+                                <input name="maxSittingMinutes" class="settings-field" type="number" min="15" max="240" step="5" value="${String(this.settings.healthGoals.maxSittingMinutes)}" />
+                            </label>
+                            <label class="settings-block">
+                                <span class="settings-label">Reminder interval</span>
+                                <span class="settings-help">リマインドの最短間隔です。今後の通知に使います。</span>
+                                <input name="reminderIntervalMinutes" class="settings-field" type="number" min="5" max="180" step="5" value="${String(this.settings.healthGoals.reminderIntervalMinutes)}" />
+                            </label>
+                        </fieldset>
                         <label class="settings-toggle">
                             <input type="checkbox" name="diagnosticsAutoCapture" ${this.settings.diagnosticsAutoCapture ? 'checked' : ''} />
                             <span>
@@ -1124,7 +1144,12 @@ export class FlexiSpotApp {
             theme: readThemeValue(formData.get('theme')),
             notificationsEnabled: formData.get('notificationsEnabled') === 'on',
             diagnosticsAutoCapture: formData.get('diagnosticsAutoCapture') === 'on',
-            commandIntervalMs: Number(formData.get('commandIntervalMs'))
+            commandIntervalMs: Number(formData.get('commandIntervalMs')),
+            healthGoals: {
+                dailyStandingGoalMinutes: Number(formData.get('dailyStandingGoalMinutes')),
+                maxSittingMinutes: Number(formData.get('maxSittingMinutes')),
+                reminderIntervalMinutes: Number(formData.get('reminderIntervalMinutes'))
+            }
         });
 
         if (nextSettings.notificationsEnabled) {
