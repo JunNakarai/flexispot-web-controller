@@ -31,6 +31,35 @@ export interface AppSettings {
     commandIntervalMs: number;
 }
 
+export type CloudAuthStatus =
+    | 'disabled'
+    | 'signed-out'
+    | 'authenticating'
+    | 'syncing'
+    | 'signed-in'
+    | 'error';
+
+export interface AuthUser {
+    uid: string;
+    displayName: string | null;
+    email: string | null;
+}
+
+export interface PersistedDataMeta {
+    presetsUpdatedAt: number;
+    settingsUpdatedAt: number;
+    historyUpdatedAt: number;
+}
+
+export interface PersistedUserDataSnapshot {
+    version: 1;
+    updatedAt: number;
+    presets: DeskPreset[];
+    settings: AppSettings;
+    heightHistory: Record<string, DailyHeightRecord[]>;
+    meta: PersistedDataMeta;
+}
+
 export interface AppState {
     connectionStatus: DeskStatus;
     isConnected: boolean;
@@ -47,6 +76,9 @@ export interface AppState {
     rawCapture: string[];
     capturePaused: boolean;
     settingsOpen: boolean;
+    authStatus: CloudAuthStatus;
+    authUser: AuthUser | null;
+    cloudStatusMessage: string;
 }
 
 export interface HeightSample {

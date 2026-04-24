@@ -1,6 +1,24 @@
-import { appendDailyHeightRecord, loadDailyHeightHistory, loadPresets, loadSettings, savePresets, saveSettings } from '../state/storage';
+import {
+    appendDailyHeightRecord,
+    loadDailyHeightHistory,
+    loadDataSnapshot,
+    loadPresets,
+    loadSettings,
+    mergeDataSnapshots,
+    saveDataSnapshot,
+    savePresets,
+    saveSettings
+} from '../state/storage';
+import {
+    isFirebaseConfigured,
+    loadUserSnapshot,
+    observeAuthState,
+    saveUserSnapshot,
+    signInWithGoogleAccount,
+    signOutCurrentUser
+} from '../firebase/auth';
 import { FlexiSpotSerialClient } from '../serial/client';
-import type { AppSettings, AppState, CommandName, DailyHeightRecord, DeskPreset, DeskStatus, HeightSample } from '../types';
+import type { AppSettings, AppState, AuthUser, CommandName, DailyHeightRecord, DeskPreset, DeskStatus, HeightSample } from '../types';
 
 const APP_VERSION = '2.0.0';
 const BUILD_DATE = '2026-03-20';
@@ -33,7 +51,12 @@ export class FlexiSpotApp {
         rawPreview: [],
         rawCapture: [],
         capturePaused: !this.settings.diagnosticsAutoCapture,
-        settingsOpen: false
+        settingsOpen: false,
+        authStatus: isFirebaseConfigured() ? 'signed-out' : 'disabled',
+        authUser: null,
+        cloudStatusMessage: isFirebaseConfigured()
+            ? 'Google でログインすると設定と履歴を Firebase に保存できます。'
+            : 'Firebase 未設定です。VITE_FIREBASE_* を設定すると Google ログインが有効になります。'
     };
     private presets: DeskPreset[] = loadPresets();
     private presetDrafts: Record<CommandName, string> = createPresetDrafts(this.presets);
@@ -43,6 +66,7 @@ export class FlexiSpotApp {
     private sessionStartedAt: number | null = null;
     private recentChartHistory: HeightSample[] = [];
     private lastRecentChartSampleAt: number | null = null;
+    private authUnsubscribe: (() => void) | null = null;
     private readonly handleDocumentKeyDown = (event: KeyboardEvent) => {
         const activeModal = this.getActiveModalElement();
         if (event.key === 'Tab' && activeModal) {
@@ -178,9 +202,23 @@ export class FlexiSpotApp {
         this.attachEvents();
         document.addEventListener('keydown', this.handleDocumentKeyDown);
         document.addEventListener('keyup', this.handleDocumentKeyUp);
+        this.authUnsubscribe = observeAuthState(
+            (user) => {
+                void this.handleAuthStateChange(user);
+            },
+            (message) => {
+                this.patchState({
+                    authStatus: 'error',
+                    cloudStatusMessage: message,
+                    latestError: message
+                });
+            }
+        );
     }
 
     unmount(): void {
+        this.authUnsubscribe?.();
+        this.authUnsubscribe = null;
         document.removeEventListener('keydown', this.handleDocumentKeyDown);
         document.removeEventListener('keyup', this.handleDocumentKeyUp);
         this.root.innerHTML = '';
@@ -209,20 +247,24 @@ export class FlexiSpotApp {
                         <h1>Control your desk from PC.</h1>
                         <p class="lede">Chrome / Edge で開いて Connect を押すと、FlexiSpot 昇降デスクをブラウザから操作できます。</p>
                     </div>
-                    <div class="top-strip-actions">
-                        <div class="hero-badges">
-                            <span class="badge ${this.statusTone(this.state.connectionStatus)}">${this.statusLabel(this.state.connectionStatus)}</span>
-                            <span class="badge neutral">v${APP_VERSION}</span>
+                    <div class="top-strip-metric">
+                        <div class="top-strip-actions">
+                            <div class="hero-badges">
+                                <span class="badge ${this.statusTone(this.state.connectionStatus)}">${this.statusLabel(this.state.connectionStatus)}</span>
+                                <span class="badge neutral">v${APP_VERSION}</span>
+                            </div>
+                            <div class="auth-actions">
+                                <span class="badge ${this.cloudStatusTone()}">${this.cloudStatusLabel()}</span>
+                                ${this.state.authUser
+                                    ? `<button class="button ghost" data-action="sign-out">Sign out</button>`
+                                    : `<button class="button ghost" data-action="sign-in" ${this.state.authStatus === 'disabled' || this.state.authStatus === 'authenticating' ? 'disabled' : ''}>Google Sign-In</button>`}
+                                <button class="button ghost" data-action="open-settings">Settings</button>
+                            </div>
                         </div>
-                        <button class="button ghost" data-action="open-settings">Settings</button>
-                    </div>
-                </section>
-
-                <section class="dashboard-grid dashboard-grid-priority">
-                    <article class="panel panel-metric">
+                        <p class="auth-summary">${this.escapeHtml(this.formatCloudSummary())}</p>
                         <p class="metric-label">Current Height</p>
-                        <div class="metric-value-row">
-                            <span class="metric-value">${this.state.currentHeight?.toFixed(1) ?? '--'}</span>
+                        <div class="metric-value-row top-strip-metric-row">
+                            <span class="metric-value top-strip-metric-value">${this.state.currentHeight?.toFixed(1) ?? '--'}</span>
                             <span class="metric-unit">cm</span>
                         </div>
                         <div class="metric-bar">
@@ -233,8 +275,10 @@ export class FlexiSpotApp {
                             <span>${HEIGHT_MAX} cm</span>
                         </div>
                         <p class="metric-caption">${this.formatHeightStatus()}</p>
-                    </article>
+                    </div>
+                </section>
 
+                <section class="dashboard-grid dashboard-grid-controls">
                     <article class="panel panel-connection">
                         <div class="panel-head">
                             <div>
@@ -269,10 +313,8 @@ export class FlexiSpotApp {
                             </button>
                         </div>
                     </article>
-                </section>
 
-                <section class="dashboard-grid">
-                    <article class="panel panel-wide">
+                    <article class="panel panel-scenes">
                         <div class="panel-head">
                             <div>
                                 <p class="panel-kicker">Quick Scenes</p>
@@ -284,7 +326,9 @@ export class FlexiSpotApp {
                             ${this.presets.map((preset) => this.renderPreset(preset)).join('')}
                         </div>
                     </article>
+                </section>
 
+                <section class="dashboard-grid dashboard-grid-height">
                     <article class="panel">
                         <div class="panel-head">
                             <div>
@@ -329,7 +373,9 @@ export class FlexiSpotApp {
                             </div>
                         </div>
                     </article>
+                </section>
 
+                <section class="dashboard-grid">
                     <article class="panel">
                         <div class="panel-head">
                             <div>
@@ -437,6 +483,14 @@ export class FlexiSpotApp {
 
         this.root.querySelector('[data-action="open-settings"]')?.addEventListener('click', () => {
             this.patchState({ settingsOpen: true });
+        });
+
+        this.root.querySelector('[data-action="sign-in"]')?.addEventListener('click', () => {
+            void this.handleSignIn();
+        });
+
+        this.root.querySelector('[data-action="sign-out"]')?.addEventListener('click', () => {
+            void this.handleSignOut();
         });
 
         this.root.querySelector('[data-action="close-settings"]')?.addEventListener('click', () => {
@@ -647,8 +701,8 @@ export class FlexiSpotApp {
             label: this.presetDrafts[preset.id].trim() || preset.label
         }));
 
-        this.presets = next;
-        savePresets(next);
+        this.presets = savePresets(next);
+        void this.syncCloudSnapshot('Preset labels updated');
         this.patchState({
             isPresetEditorOpen: false,
             statusMessage: 'Preset labels updated'
@@ -990,6 +1044,7 @@ export class FlexiSpotApp {
 
         this.dailyHeightHistory = appendDailyHeightRecord(dayKey, record);
         this.lastPersistedHeight = record;
+        void this.syncCloudSnapshot();
     }
 
     private appendRecentChartSample(sample: HeightSample): void {
@@ -1119,6 +1174,7 @@ export class FlexiSpotApp {
             capturePaused: this.settings.diagnosticsAutoCapture ? this.state.capturePaused : true,
             statusMessage: 'Settings updated'
         });
+        await this.syncCloudSnapshot('Settings updated');
     }
 
     private applyTheme(): void {
@@ -1191,6 +1247,173 @@ export class FlexiSpotApp {
         }
 
         return null;
+    }
+
+    private async handleSignIn(): Promise<void> {
+        if (!isFirebaseConfigured()) {
+            this.patchState({
+                authStatus: 'disabled',
+                latestError: 'Firebase 未設定です。VITE_FIREBASE_* を設定してください。'
+            });
+            return;
+        }
+
+        this.patchState({
+            authStatus: 'authenticating',
+            cloudStatusMessage: 'Google アカウントを確認しています。'
+        });
+
+        try {
+            await signInWithGoogleAccount();
+        } catch (error) {
+            this.patchState({
+                authStatus: this.state.authUser ? 'signed-in' : 'signed-out',
+                latestError: toMessage(error),
+                cloudStatusMessage: toMessage(error)
+            });
+        }
+    }
+
+    private async handleSignOut(): Promise<void> {
+        try {
+            await signOutCurrentUser();
+            this.patchState({
+                authStatus: 'signed-out',
+                authUser: null,
+                cloudStatusMessage: 'ローカル保存に切り替えました。'
+            });
+        } catch (error) {
+            this.patchState({
+                authStatus: 'error',
+                latestError: toMessage(error),
+                cloudStatusMessage: toMessage(error)
+            });
+        }
+    }
+
+    private async handleAuthStateChange(user: AuthUser | null): Promise<void> {
+        if (!isFirebaseConfigured()) {
+            this.patchState({
+                authStatus: 'disabled',
+                authUser: null
+            });
+            return;
+        }
+
+        if (!user) {
+            this.patchState({
+                authStatus: 'signed-out',
+                authUser: null,
+                cloudStatusMessage: 'Google でログインすると設定と履歴を Firebase に保存できます。'
+            });
+            return;
+        }
+
+        this.patchState({
+            authStatus: 'syncing',
+            authUser: user,
+            cloudStatusMessage: 'Firebase から保存データを同期しています。'
+        });
+
+        try {
+            const localSnapshot = loadDataSnapshot();
+            const remoteSnapshot = await loadUserSnapshot(user.uid);
+            const mergedSnapshot = remoteSnapshot
+                ? mergeDataSnapshots(localSnapshot, remoteSnapshot)
+                : localSnapshot;
+
+            saveDataSnapshot(mergedSnapshot);
+            await saveUserSnapshot(user.uid, mergedSnapshot);
+            this.refreshPersistedState();
+            this.patchState({
+                authStatus: 'signed-in',
+                authUser: user,
+                cloudStatusMessage: `${this.getUserLabel(user)} のデータを同期済みです。`
+            });
+        } catch (error) {
+            this.patchState({
+                authStatus: 'error',
+                authUser: user,
+                latestError: toMessage(error),
+                cloudStatusMessage: toMessage(error)
+            });
+        }
+    }
+
+    private async syncCloudSnapshot(statusMessage?: string): Promise<void> {
+        if (!this.state.authUser) {
+            return;
+        }
+
+        try {
+            const snapshot = loadDataSnapshot();
+            await saveUserSnapshot(this.state.authUser.uid, snapshot);
+            this.patchState({
+                authStatus: 'signed-in',
+                cloudStatusMessage: statusMessage
+                    ? `${statusMessage} · Firebase に保存しました。`
+                    : `${this.getUserLabel(this.state.authUser)} のデータを Firebase に保存しました。`
+            });
+        } catch (error) {
+            this.patchState({
+                authStatus: 'error',
+                latestError: toMessage(error),
+                cloudStatusMessage: toMessage(error)
+            });
+        }
+    }
+
+    private refreshPersistedState(): void {
+        this.settings = loadSettings();
+        this.presets = loadPresets();
+        this.presetDrafts = createPresetDrafts(this.presets);
+        this.dailyHeightHistory = loadDailyHeightHistory(getTodayKey());
+        this.lastPersistedHeight = this.dailyHeightHistory.at(-1) ?? null;
+        this.serial.setCommandInterval(this.settings.commandIntervalMs);
+        this.applyTheme();
+        this.patchState({
+            capturePaused: this.settings.diagnosticsAutoCapture ? this.state.capturePaused : true
+        });
+    }
+
+    private cloudStatusLabel(): string {
+        switch (this.state.authStatus) {
+            case 'disabled':
+                return 'Firebase Off';
+            case 'authenticating':
+                return 'Signing In';
+            case 'syncing':
+                return 'Syncing';
+            case 'signed-in':
+                return 'Cloud On';
+            case 'error':
+                return 'Cloud Error';
+            default:
+                return 'Cloud Ready';
+        }
+    }
+
+    private cloudStatusTone(): string {
+        switch (this.state.authStatus) {
+            case 'signed-in':
+                return 'tone-green';
+            case 'syncing':
+            case 'authenticating':
+                return 'tone-blue';
+            case 'error':
+                return 'tone-red';
+            default:
+                return 'tone-slate';
+        }
+    }
+
+    private formatCloudSummary(): string {
+        const userLabel = this.state.authUser ? this.getUserLabel(this.state.authUser) : 'Guest';
+        return `${userLabel} · ${this.state.cloudStatusMessage}`;
+    }
+
+    private getUserLabel(user: AuthUser): string {
+        return user.displayName || user.email || 'Signed-in user';
     }
 }
 

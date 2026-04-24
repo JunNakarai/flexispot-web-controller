@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { appendDailyHeightRecord, loadDailyHeightHistory, loadPresets, loadSettings, savePresets, saveSettings } from './storage';
+import {
+    appendDailyHeightRecord,
+    loadDailyHeightHistory,
+    loadDataSnapshot,
+    loadPresets,
+    loadSettings,
+    mergeDataSnapshots,
+    savePresets,
+    saveSettings
+} from './storage';
 
 const PRESETS_KEY = 'flexispot-control-deck-presets-v1';
 const HEIGHT_HISTORY_KEY = 'flexispot-control-deck-height-history-v1';
@@ -151,5 +160,38 @@ describe('storage', () => {
             '2026-04-15',
             '2026-04-16'
         ]);
+    });
+
+    it('merges snapshots by section timestamp', () => {
+        saveSettings({
+            theme: 'light',
+            notificationsEnabled: false,
+            diagnosticsAutoCapture: true,
+            commandIntervalMs: 108
+        });
+
+        const localSnapshot = loadDataSnapshot();
+        const remoteSnapshot = {
+            ...localSnapshot,
+            presets: localSnapshot.presets.map((preset) => ({
+                ...preset,
+                label: `${preset.label} Remote`
+            })),
+            settings: {
+                ...localSnapshot.settings,
+                theme: 'dark' as const
+            },
+            meta: {
+                presetsUpdatedAt: localSnapshot.meta.presetsUpdatedAt + 100,
+                settingsUpdatedAt: Math.max(localSnapshot.meta.settingsUpdatedAt - 100, 0),
+                historyUpdatedAt: localSnapshot.meta.historyUpdatedAt
+            },
+            updatedAt: localSnapshot.updatedAt + 100
+        };
+
+        const merged = mergeDataSnapshots(localSnapshot, remoteSnapshot);
+
+        expect(merged.presets[0]?.label).toContain('Remote');
+        expect(merged.settings.theme).toBe('light');
     });
 });

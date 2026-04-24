@@ -185,6 +185,65 @@ npm run preview
 npm run typecheck
 ```
 
+## Firebase で Google ログインを使う
+
+Google ログインとクラウド保存を有効にする場合は、Firebase Authentication と Firestore を設定してください。
+
+1. Firebase コンソールで Google プロバイダを有効化する
+2. Firestore を作成する
+3. ルートに `.env.local` を置く
+
+```bash
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+```
+
+ログイン後は、プリセット、設定、日次高さ履歴をユーザー単位で Firestore に保存します。未ログイン時は従来どおり `localStorage` を使い、ログイン時にローカルとクラウドの更新時刻を比較して自動マージします。
+
+## ローカル画像生成
+
+Apple Silicon Mac で、短いプロンプトからローカル画像生成を試すための補助スクリプトを同梱しています。既定では `mflux` の `FLUX.2-klein-4B` を 8bit 量子化で実行します。
+
+セットアップ:
+
+```bash
+npm run imagegen:setup
+```
+
+生成:
+
+```bash
+npm run imagegen -- "黒髪少女"
+```
+
+または直接:
+
+```bash
+./scripts/generate-image.sh "黒髪少女"
+```
+
+生成画像は `generated-images/` に保存されます。初回生成時はモデルのダウンロードが走るため、数 GB 単位の空き容量と通信時間が必要です。
+
+よく使う環境変数:
+
+```bash
+export HF_HOME="$HOME/.cache/huggingface"
+export MFLUX_CACHE_DIR="$HOME/Library/Caches/mflux"
+export MFLUX_MODEL="flux2-klein-4b"
+export MFLUX_QUANTIZE="8"
+export MFLUX_STEPS="4"
+```
+
+補足:
+
+- 短いプロンプトには既定で簡単な品質向上タグを自動追加します
+- より写実寄りにしたい場合は `MFLUX_BIN=/Users/jun/.local/bin/mflux-generate-z-image-turbo` のように切り替え可能です
+- サンドボックス内では MLX の Metal 初期化に失敗することがあるため、実運用確認は通常の macOS ターミナルで行う前提です
+
 ユニットテスト:
 
 ```bash

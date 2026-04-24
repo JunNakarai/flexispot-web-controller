@@ -1,7 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
-import { FlexiSpotApp } from './app';
 import type { CommandName } from '../types';
+
+const firebaseAuthMock = vi.hoisted(() => ({
+    isFirebaseConfigured: vi.fn(() => true),
+    observeAuthState: vi.fn((callback: (user: null) => void) => {
+        callback(null);
+        return () => undefined;
+    }),
+    signInWithGoogleAccount: vi.fn(async () => ({
+        uid: 'user-1',
+        displayName: 'Desk User',
+        email: 'desk@example.com'
+    })),
+    signOutCurrentUser: vi.fn(async () => undefined),
+    loadUserSnapshot: vi.fn(async () => null),
+    saveUserSnapshot: vi.fn(async () => undefined)
+}));
+
+vi.mock('../firebase/auth', () => firebaseAuthMock);
 
 class FakeSerialClient {
     events: Record<string, ((...args: unknown[]) => void) | undefined> = {};
@@ -49,10 +66,12 @@ class FakeSerialClient {
 describe('FlexiSpotApp UI', () => {
     let dom: JSDOM;
     let root: HTMLDivElement;
-    let app: FlexiSpotApp;
+    let FlexiSpotAppClass: typeof import('./app').FlexiSpotApp;
+    let app: import('./app').FlexiSpotApp;
     let fakeSerial: FakeSerialClient;
 
-    beforeEach(() => {
+    beforeEach(async () => {
+        ({ FlexiSpotApp: FlexiSpotAppClass } = await import('./app'));
         dom = new JSDOM('<!DOCTYPE html><html><body><div id="app"></div></body></html>', {
             url: 'https://flexispot.test'
         });
@@ -100,7 +119,7 @@ describe('FlexiSpotApp UI', () => {
 
         root = document.querySelector<HTMLDivElement>('#app') as HTMLDivElement;
         fakeSerial = new FakeSerialClient();
-        app = new FlexiSpotApp(root);
+        app = new FlexiSpotAppClass(root);
         (app as unknown as { serial: FakeSerialClient }).serial = fakeSerial;
 
         Object.defineProperty(window, 'isSecureContext', {
@@ -197,6 +216,11 @@ describe('FlexiSpotApp UI', () => {
         expect(root.textContent).toContain('0');
         expect(document.querySelector('[role="status"]')).not.toBeNull();
         expect(document.querySelector('[role="log"]')).not.toBeNull();
+    });
+
+    it('shows Google sign-in controls when Firebase is configured', () => {
+        expect(root.textContent).toContain('Google Sign-In');
+        expect(firebaseAuthMock.observeAuthState).toHaveBeenCalled();
     });
 });
 
