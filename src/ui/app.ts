@@ -17,6 +17,7 @@ import {
     signInWithGoogleAccount,
     signOutCurrentUser
 } from '../firebase/auth';
+import { buildDailyHealthSummary } from '../health/summary';
 import { FlexiSpotSerialClient } from '../serial/client';
 import type { AppSettings, AppState, AuthUser, CommandName, DailyHeightRecord, DeskPreset, DeskStatus, HeightSample } from '../types';
 
@@ -234,6 +235,7 @@ export class FlexiSpotApp {
         const supported = FlexiSpotSerialClient.isSupported();
         const secure = FlexiSpotSerialClient.isSecureContext();
         const chart = this.renderDailyChart();
+        const healthSummary = this.renderHealthSummary();
         const supportMessage = this.getSupportMessage(supported, secure);
 
         this.root.innerHTML = `
@@ -315,6 +317,7 @@ export class FlexiSpotApp {
                             </div>
                             <p class="shortcut-hint">${chart.sampleCount} samples today</p>
                         </div>
+                        ${healthSummary}
                         <div class="chart-card">
                             ${chart.svg}
                             <div class="chart-footer">
@@ -352,6 +355,56 @@ export class FlexiSpotApp {
 
                 ${this.renderSettingsModal()}
                 ${this.state.isPresetEditorOpen ? this.renderPresetEditor() : ''}
+            </div>
+        `;
+    }
+
+    private renderHealthSummary(): string {
+        const summary = buildDailyHealthSummary(this.dailyHeightHistory);
+
+        if (summary.sampleCount === 0) {
+            return `
+                <section class="health-summary health-summary-empty" aria-label="Today's health summary">
+                    <div>
+                        <p class="panel-kicker">Health Summary</p>
+                        <p class="empty-state">高さログが入ると、立位時間・座位時間・姿勢切替がここに表示されます。</p>
+                    </div>
+                </section>
+            `;
+        }
+
+        const progressPercent = Math.round(summary.standingGoalProgress * 100);
+        const goalLabel = summary.remainingStandingGoalMs === 0
+            ? 'Standing goal reached'
+            : `${formatDuration(summary.remainingStandingGoalMs)} more standing today`;
+
+        return `
+            <section class="health-summary" aria-label="Today's health summary">
+                <div class="health-summary-grid">
+                    ${this.renderHealthMetric('Standing', formatDuration(summary.standingMs))}
+                    ${this.renderHealthMetric('Sitting', formatDuration(summary.sittingMs))}
+                    ${this.renderHealthMetric('Switches', String(summary.transitionCount))}
+                    ${this.renderHealthMetric('Longest sit', formatDuration(summary.longestSittingMs))}
+                </div>
+                <div class="health-goal">
+                    <div class="health-goal-copy">
+                        <span>Daily stand goal</span>
+                        <strong>${goalLabel}</strong>
+                    </div>
+                    <div class="health-goal-meter" aria-label="Standing goal progress">
+                        <span style="width: ${progressPercent}%"></span>
+                    </div>
+                    <span class="health-goal-percent">${progressPercent}%</span>
+                </div>
+            </section>
+        `;
+    }
+
+    private renderHealthMetric(label: string, value: string): string {
+        return `
+            <div class="health-metric">
+                <span>${label}</span>
+                <strong>${value}</strong>
             </div>
         `;
     }

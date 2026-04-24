@@ -109,3 +109,14 @@ export interface PostureSession {
     minHeightCm: number;
     maxHeightCm: number;
 }
+
+export interface DailyHealthSummary {
+    sampleCount: number;
+    standingMs: number;
+    sittingMs: number;
+    transitionCount: number;
+    longestSittingMs: number;
+    standingGoalMs: number;
+    remainingStandingGoalMs: number;
+    standingGoalProgress: number;
+}

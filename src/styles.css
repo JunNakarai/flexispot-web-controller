@@ -671,6 +671,91 @@ button {
     padding: 14px 14px 10px;
 }
 
+.health-summary {
+    display: grid;
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.health-summary-empty {
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 16px;
+    background: rgba(16, 32, 21, 0.035);
+}
+
+.health-summary-empty .empty-state {
+    min-height: 0;
+    padding: 0;
+    text-align: left;
+}
+
+.health-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.health-metric,
+.health-goal {
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.48);
+}
+
+.health-metric {
+    display: grid;
+    gap: 8px;
+    border-radius: 18px;
+    padding: 16px;
+}
+
+.health-metric span,
+.health-goal-copy span,
+.health-goal-percent {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.health-metric strong {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(1.35rem, 2vw, 1.85rem);
+    line-height: 1;
+}
+
+.health-goal {
+    display: grid;
+    grid-template-columns: minmax(190px, auto) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    border-radius: 18px;
+    padding: 14px 16px;
+}
+
+.health-goal-copy {
+    display: grid;
+    gap: 4px;
+}
+
+.health-goal-copy strong {
+    font-size: 1rem;
+}
+
+.health-goal-meter {
+    height: 12px;
+    border-radius: 999px;
+    background: rgba(16, 32, 21, 0.08);
+    overflow: hidden;
+}
+
+.health-goal-meter span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--mint);
+    transition: width 180ms ease;
+}
+
 .height-chart {
     width: 100%;
     height: auto;
@@ -987,6 +1072,14 @@ button {
     .remote-face {
         grid-template-columns: 1fr;
     }
+
+    .health-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .health-goal {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 720px) {
@@ -1021,6 +1114,10 @@ button {
     .diagnostics-summary {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .health-summary-grid {
+        grid-template-columns: 1fr;
     }
 
     .auth-actions {
