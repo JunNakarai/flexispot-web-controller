@@ -206,6 +206,14 @@ VITE_FIREBASE_APP_ID=...
 
 GitHub Pages にも Firebase を反映する場合は、GitHub リポジトリの `Settings > Secrets and variables > Actions` に同じ `VITE_FIREBASE_*` を登録してください。`static.yml` は Actions secrets から build 時に読み込みます。
 
+## 健康ログとエクスポート
+
+高さ履歴はブラウザの `localStorage` に、最大 14 日分、1 日あたり最大 1440 サンプルまで保存します。これは 1 分間隔で 24 時間分を保持できる量で、Firestore 同期時もユーザーごとのドキュメントサイズを小さく保つための上限です。
+
+現時点では、週次サマリーはこの 14 日分のローカル保存データから集計します。CSV / JSON エクスポートは週次サマリーを対象にし、アプリ内の `Weekly` セクションから出力できます。
+
+月次・年次の詳細トレンドや生ログの長期保存が必要になった段階で、`localStorage` から IndexedDB へ移行し、Firebase 側も日単位のサブコレクションに分割する方針です。今の段階では、14 日制限のままにして同期量と実装複雑度を抑えます。
+
 ## ローカル画像生成
 
 Apple Silicon Mac で、短いプロンプトからローカル画像生成を試すための補助スクリプトを同梱しています。既定では `mflux` の `FLUX.2-klein-4B` を 8bit 量子化で実行します。

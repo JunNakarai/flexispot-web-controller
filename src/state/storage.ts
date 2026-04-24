@@ -125,6 +125,10 @@ export function loadDailyHeightHistory(dayKey: string): DailyHeightRecord[] {
     }
 }
 
+export function loadHeightHistory(): Record<string, DailyHeightRecord[]> {
+    return loadAllHeightHistory();
+}
+
 export function appendDailyHeightRecord(dayKey: string, record: DailyHeightRecord): DailyHeightRecord[] {
     const history = loadAllHeightHistory();
     const nextDayRecords = [...(history[dayKey] ?? []), sanitizeDailyRecord(record)].slice(-MAX_SAMPLES_PER_DAY);

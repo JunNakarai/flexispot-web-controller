@@ -756,6 +756,46 @@ button {
     transition: width 180ms ease;
 }
 
+.period-summary {
+    display: grid;
+    gap: 14px;
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+}
+
+.period-summary-empty {
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 16px;
+    background: rgba(16, 32, 21, 0.035);
+}
+
+.period-summary-empty .empty-state {
+    min-height: 0;
+    padding: 0;
+    text-align: left;
+}
+
+.period-summary-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.period-summary-head h3 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.period-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
 .height-chart {
     width: 100%;
     height: auto;
@@ -1098,6 +1138,11 @@ button {
 
     .health-goal {
         grid-template-columns: 1fr;
+    }
+
+    .period-summary-head {
+        align-items: flex-start;
+        flex-direction: column;
     }
 }
 

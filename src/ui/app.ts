@@ -1,5 +1,6 @@
 import {
     appendDailyHeightRecord,
+    loadHeightHistory,
     loadDailyHeightHistory,
     loadDataSnapshot,
     loadPresets,
@@ -18,6 +19,7 @@ import {
     signOutCurrentUser
 } from '../firebase/auth';
 import { classifyDeskPosture } from '../health/posture';
+import { buildPeriodHealthSummary, exportHealthSummaryCsv, exportHealthSummaryJson } from '../health/report';
 import { evaluateSittingReminder } from '../health/reminder';
 import { buildDailyHealthSummary } from '../health/summary';
 import { FlexiSpotSerialClient } from '../serial/client';
@@ -247,6 +249,7 @@ export class FlexiSpotApp {
         const secure = FlexiSpotSerialClient.isSecureContext();
         const chart = this.renderDailyChart();
         const healthSummary = this.renderHealthSummary();
+        const weeklySummary = this.renderWeeklySummary();
         const supportMessage = this.getSupportMessage(supported, secure);
 
         this.root.innerHTML = `
@@ -351,6 +354,7 @@ export class FlexiSpotApp {
                                 <dd>${chart.latestLabel}</dd>
                             </div>
                         </div>
+                        ${weeklySummary}
                     </article>
                 </section>
 
@@ -432,6 +436,45 @@ export class FlexiSpotApp {
         `;
     }
 
+    private renderWeeklySummary(): string {
+        const summary = buildPeriodHealthSummary(loadHeightHistory(), {
+            period: 'week',
+            standingGoalMinutes: this.settings.healthGoals.dailyStandingGoalMinutes
+        });
+
+        if (summary.dayCount === 0) {
+            return `
+                <section class="period-summary period-summary-empty" aria-label="Weekly health summary">
+                    <div>
+                        <p class="panel-kicker">Weekly</p>
+                        <p class="empty-state">週次サマリーは、高さログが保存されると表示されます。</p>
+                    </div>
+                </section>
+            `;
+        }
+
+        return `
+            <section class="period-summary" aria-label="Weekly health summary">
+                <div class="period-summary-head">
+                    <div>
+                        <p class="panel-kicker">Weekly</p>
+                        <h3>${this.escapeHtml(summary.startedOn)} - ${this.escapeHtml(summary.endedOn)}</h3>
+                    </div>
+                    <div class="period-actions">
+                        <button class="button ghost small" data-action="export-health" data-format="csv">CSV</button>
+                        <button class="button ghost small" data-action="export-health" data-format="json">JSON</button>
+                    </div>
+                </div>
+                <div class="health-summary-grid period-summary-grid">
+                    ${this.renderHealthMetric('Standing', formatDuration(summary.standingMs))}
+                    ${this.renderHealthMetric('Sitting', formatDuration(summary.sittingMs))}
+                    ${this.renderHealthMetric('Switches', String(summary.transitionCount))}
+                    ${this.renderHealthMetric('Longest sit', formatDuration(summary.longestSittingMs))}
+                </div>
+            </section>
+        `;
+    }
+
     private attachEvents(): void {
         this.root.querySelector('[data-action="connect"]')?.addEventListener('click', () => {
             this.handleConnect();
@@ -499,6 +542,12 @@ export class FlexiSpotApp {
 
         this.root.querySelector('[data-action="copy"]')?.addEventListener('click', async () => {
             await this.copyCapture();
+        });
+
+        this.root.querySelectorAll<HTMLElement>('[data-action="export-health"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                this.exportHealthLog(button.dataset.format === 'json' ? 'json' : 'csv');
+            });
         });
 
         this.root.querySelector('[data-action="clear"]')?.addEventListener('click', () => {
@@ -1074,6 +1123,25 @@ export class FlexiSpotApp {
         }
 
         void new Notification('Stand Reminder', { body: message });
+    }
+
+    private exportHealthLog(format: 'csv' | 'json'): void {
+        const summary = buildPeriodHealthSummary(loadHeightHistory(), {
+            period: 'week',
+            standingGoalMinutes: this.settings.healthGoals.dailyStandingGoalMinutes
+        });
+        const content = format === 'json'
+            ? exportHealthSummaryJson(summary)
+            : exportHealthSummaryCsv(summary);
+        const mimeType = format === 'json' ? 'application/json' : 'text/csv';
+        const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `flexispot-health-${summary.startedOn}-${summary.endedOn}.${format}`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+        this.patchState({ statusMessage: `Exported weekly health ${format.toUpperCase()}` });
     }
 
     private persistHeightSample(sample: HeightSample): void {
