@@ -83,6 +83,7 @@ export interface AppState {
     rawCapture: string[];
     capturePaused: boolean;
     settingsOpen: boolean;
+    healthPrompt: string | null;
     authStatus: CloudAuthStatus;
     authUser: AuthUser | null;
     cloudStatusMessage: string;

@@ -17,6 +17,8 @@ import {
     signInWithGoogleAccount,
     signOutCurrentUser
 } from '../firebase/auth';
+import { classifyDeskPosture } from '../health/posture';
+import { evaluateSittingReminder } from '../health/reminder';
 import { buildDailyHealthSummary } from '../health/summary';
 import { FlexiSpotSerialClient } from '../serial/client';
 import type { AppSettings, AppState, AuthUser, CommandName, DailyHeightRecord, DeskPreset, DeskStatus, HeightSample } from '../types';
@@ -53,6 +55,7 @@ export class FlexiSpotApp {
         rawCapture: [],
         capturePaused: !this.settings.diagnosticsAutoCapture,
         settingsOpen: false,
+        healthPrompt: null,
         authStatus: isFirebaseConfigured() ? 'signed-out' : 'disabled',
         authUser: null,
         cloudStatusMessage: isFirebaseConfigured()
@@ -67,6 +70,8 @@ export class FlexiSpotApp {
     private sessionStartedAt: number | null = null;
     private recentChartHistory: HeightSample[] = [];
     private lastRecentChartSampleAt: number | null = null;
+    private sittingStartedAt: number | null = null;
+    private lastSittingPromptedAt: number | null = null;
     private authUnsubscribe: (() => void) | null = null;
     private readonly handleDocumentKeyDown = (event: KeyboardEvent) => {
         const activeModal = this.getActiveModalElement();
@@ -146,10 +151,15 @@ export class FlexiSpotApp {
                     this.sessionStartedAt = Date.now();
                     this.recentChartHistory = [];
                     this.lastRecentChartSampleAt = null;
+                    this.sittingStartedAt = null;
+                    this.lastSittingPromptedAt = null;
                 } else {
                     this.sessionStartedAt = null;
                     this.recentChartHistory = [];
                     this.lastRecentChartSampleAt = null;
+                    this.sittingStartedAt = null;
+                    this.lastSittingPromptedAt = null;
+                    this.patchState({ healthPrompt: null });
                 }
             },
             onHeight: (heightCm) => {
@@ -161,6 +171,7 @@ export class FlexiSpotApp {
                 this.history = [...this.history, sample].slice(-HEIGHT_HISTORY_LIMIT);
                 this.persistHeightSample(sample);
                 this.appendRecentChartSample(sample);
+                this.updateSittingReminder(sample);
                 this.patchState({
                     currentHeight: heightCm,
                     lastHeightSampleAt: sample.timestamp
@@ -353,6 +364,16 @@ export class FlexiSpotApp {
                     </section>
                 ` : ''}
 
+                ${this.state.healthPrompt ? `
+                    <section class="toast health-toast" role="status">
+                        <div>
+                            <p class="toast-title">Stand Reminder</p>
+                            <p class="toast-message">${this.escapeHtml(this.state.healthPrompt)}</p>
+                        </div>
+                        <button class="button ghost small" data-action="dismiss-health-prompt">Dismiss</button>
+                    </section>
+                ` : ''}
+
                 ${this.renderSettingsModal()}
                 ${this.state.isPresetEditorOpen ? this.renderPresetEditor() : ''}
             </div>
@@ -425,6 +446,10 @@ export class FlexiSpotApp {
                 latestError: null,
                 connectionStatus: this.state.isConnected ? 'connected' : 'idle'
             });
+        });
+
+        this.root.querySelector('[data-action="dismiss-health-prompt"]')?.addEventListener('click', () => {
+            this.patchState({ healthPrompt: null });
         });
 
         this.root.querySelector('[data-action="customize"]')?.addEventListener('click', () => {
@@ -1007,6 +1032,48 @@ export class FlexiSpotApp {
                 latestError: 'クリップボードへのコピーに失敗しました。'
             });
         }
+    }
+
+    private updateSittingReminder(sample: HeightSample): void {
+        const posture = classifyDeskPosture(sample.valueCm);
+        const result = evaluateSittingReminder({
+            posture,
+            sittingStartedAt: this.sittingStartedAt,
+            lastPromptedAt: this.lastSittingPromptedAt,
+            now: sample.timestamp,
+            maxSittingMs: this.settings.healthGoals.maxSittingMinutes * 60_000,
+            reminderIntervalMs: this.settings.healthGoals.reminderIntervalMinutes * 60_000
+        });
+
+        this.sittingStartedAt = result.sittingStartedAt;
+        this.lastSittingPromptedAt = result.lastPromptedAt;
+
+        if (result.action === 'clear') {
+            if (this.state.healthPrompt !== null) {
+                this.patchState({ healthPrompt: null });
+            }
+            return;
+        }
+
+        if (result.action !== 'prompt') {
+            return;
+        }
+
+        const message = `連続座位が ${formatDuration(result.sittingDurationMs)} になりました。少し立つ時間を作りましょう。`;
+        this.patchState({ healthPrompt: message });
+        this.notifySittingReminder(message);
+    }
+
+    private notifySittingReminder(message: string): void {
+        if (!this.settings.notificationsEnabled || typeof Notification === 'undefined') {
+            return;
+        }
+
+        if (Notification.permission !== 'granted' || document.visibilityState === 'visible') {
+            return;
+        }
+
+        void new Notification('Stand Reminder', { body: message });
     }
 
     private persistHeightSample(sample: HeightSample): void {
