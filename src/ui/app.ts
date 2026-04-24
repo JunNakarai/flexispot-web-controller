@@ -258,7 +258,8 @@ export class FlexiSpotApp {
                     <div class="app-title">
                         <p class="eyebrow">FlexiSpot Desk Controller</p>
                         <h1>Desk Control</h1>
-                        <p class="lede">Chrome / Edge で開いて Connect を押すと、FlexiSpot 昇降デスクをブラウザから操作できます。</p>
+                        <p class="lede">Chrome / Edge で開いて Connect を押すと、FlexiSpot 昇降デスクをブラウザから操作し、立ち座り習慣の目安を記録できます。</p>
+                        <p class="privacy-note">高さログはこのブラウザに保存されます。Google Sign-In 時のみ Firebase に同期されます。医療効果や健康改善を保証するものではありません。</p>
                     </div>
                     <div class="app-header-actions">
                         <div class="hero-badges">
@@ -394,7 +395,7 @@ export class FlexiSpotApp {
                 <section class="health-summary health-summary-empty" aria-label="Today's health summary">
                     <div>
                         <p class="panel-kicker">Health Summary</p>
-                        <p class="empty-state">高さログが入ると、立位時間・座位時間・姿勢切替がここに表示されます。</p>
+                        <p class="empty-state">高さログが入ると、立位時間・座位時間・姿勢切替の目安がここに表示されます。</p>
                     </div>
                 </section>
             `;
@@ -858,12 +859,12 @@ export class FlexiSpotApp {
                             <legend>Health goals</legend>
                             <label class="settings-block">
                                 <span class="settings-label">Daily standing goal</span>
-                                <span class="settings-help">Today の立位目標として表示します。</span>
+                                <span class="settings-help">Today の立位目標として表示します。医療目標ではなく習慣作りの目安です。</span>
                                 <input name="dailyStandingGoalMinutes" class="settings-field" type="number" min="15" max="480" step="5" value="${String(this.settings.healthGoals.dailyStandingGoalMinutes)}" />
                             </label>
                             <label class="settings-block">
                                 <span class="settings-label">Max sitting streak</span>
-                                <span class="settings-help">座りっぱなし判定の上限です。通知機能の土台として保存します。</span>
+                                <span class="settings-help">座りっぱなし判定の上限です。デスク高さから推定した目安として使います。</span>
                                 <input name="maxSittingMinutes" class="settings-field" type="number" min="15" max="240" step="5" value="${String(this.settings.healthGoals.maxSittingMinutes)}" />
                             </label>
                             <label class="settings-block">

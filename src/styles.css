@@ -156,6 +156,14 @@ button {
     line-height: 1.6;
 }
 
+.privacy-note {
+    max-width: 66ch;
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 0.84rem;
+    line-height: 1.55;
+}
+
 .hero-badges {
     display: flex;
     flex-wrap: wrap;
