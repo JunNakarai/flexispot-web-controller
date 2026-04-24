@@ -204,6 +204,8 @@ VITE_FIREBASE_APP_ID=...
 
 ログイン後は、プリセット、設定、日次高さ履歴をユーザー単位で Firestore に保存します。未ログイン時は従来どおり `localStorage` を使い、ログイン時にローカルとクラウドの更新時刻を比較して自動マージします。
 
+GitHub Pages にも Firebase を反映する場合は、GitHub リポジトリの `Settings > Secrets and variables > Actions` に同じ `VITE_FIREBASE_*` を登録してください。`static.yml` は Actions secrets から build 時に読み込みます。
+
 ## ローカル画像生成
 
 Apple Silicon Mac で、短いプロンプトからローカル画像生成を試すための補助スクリプトを同梱しています。既定では `mflux` の `FLUX.2-klein-4B` を 8bit 量子化で実行します。
