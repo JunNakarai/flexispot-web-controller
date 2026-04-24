@@ -90,3 +90,22 @@ export interface DailyHeightRecord {
     timestamp: number;
     valueCm: number;
 }
+
+export type PostureKind = 'sitting' | 'standing' | 'unknown';
+
+export interface PostureThresholds {
+    sittingMaxCm: number;
+    standingMinCm: number;
+    maxSampleGapMs: number;
+    minSessionDurationMs: number;
+}
+
+export interface PostureSession {
+    posture: Exclude<PostureKind, 'unknown'>;
+    startedAt: number;
+    endedAt: number;
+    durationMs: number;
+    sampleCount: number;
+    minHeightCm: number;
+    maxHeightCm: number;
+}
