@@ -233,116 +233,81 @@ export class FlexiSpotApp {
     private render(): void {
         const supported = FlexiSpotSerialClient.isSupported();
         const secure = FlexiSpotSerialClient.isSecureContext();
-        const heightPercentage = this.state.currentHeight === null
-            ? 0
-            : clamp(((this.state.currentHeight - HEIGHT_MIN) / (HEIGHT_MAX - HEIGHT_MIN)) * 100, 0, 100);
         const chart = this.renderDailyChart();
         const supportMessage = this.getSupportMessage(supported, secure);
 
         this.root.innerHTML = `
             <div class="shell">
-                <section class="top-strip">
-                    <div class="top-strip-copy">
+                <header class="app-header">
+                    <div class="app-title">
                         <p class="eyebrow">FlexiSpot Desk Controller</p>
-                        <h1>Control your desk from PC.</h1>
+                        <h1>Desk Control</h1>
                         <p class="lede">Chrome / Edge で開いて Connect を押すと、FlexiSpot 昇降デスクをブラウザから操作できます。</p>
                     </div>
-                    <div class="top-strip-metric">
-                        <div class="top-strip-actions">
-                            <div class="hero-badges">
-                                <span class="badge ${this.statusTone(this.state.connectionStatus)}">${this.statusLabel(this.state.connectionStatus)}</span>
-                                <span class="badge neutral">v${APP_VERSION}</span>
-                            </div>
-                            <div class="auth-actions">
-                                <span class="badge ${this.cloudStatusTone()}">${this.cloudStatusLabel()}</span>
-                                ${this.state.authUser
-                                    ? `<button class="button ghost" data-action="sign-out">Sign out</button>`
-                                    : `<button class="button ghost" data-action="sign-in" ${this.state.authStatus === 'disabled' || this.state.authStatus === 'authenticating' ? 'disabled' : ''}>Google Sign-In</button>`}
-                                <button class="button ghost" data-action="open-settings">Settings</button>
-                            </div>
+                    <div class="app-header-actions">
+                        <div class="hero-badges">
+                            <span class="badge ${this.statusTone(this.state.connectionStatus)}">${this.statusLabel(this.state.connectionStatus)}</span>
+                            <span class="badge neutral">v${APP_VERSION}</span>
                         </div>
-                        <p class="auth-summary">${this.escapeHtml(this.formatCloudSummary())}</p>
-                        <p class="metric-label">Current Height</p>
-                        <div class="metric-value-row top-strip-metric-row">
-                            <span class="metric-value top-strip-metric-value">${this.state.currentHeight?.toFixed(1) ?? '--'}</span>
-                            <span class="metric-unit">cm</span>
+                        <div class="auth-actions">
+                            <span class="badge ${this.cloudStatusTone()}">${this.cloudStatusLabel()}</span>
+                            ${this.state.authUser
+                                ? `<button class="button ghost" data-action="sign-out">Sign out</button>`
+                                : `<button class="button ghost" data-action="sign-in" ${this.state.authStatus === 'disabled' || this.state.authStatus === 'authenticating' ? 'disabled' : ''}>Google Sign-In</button>`}
+                            <button class="button ghost" data-action="open-settings">Settings</button>
                         </div>
-                        <div class="metric-bar">
-                            <div class="metric-bar-fill" style="width:${heightPercentage}%"></div>
-                        </div>
-                        <div class="metric-scale">
-                            <span>${HEIGHT_MIN} cm</span>
-                            <span>${HEIGHT_MAX} cm</span>
-                        </div>
-                        <p class="metric-caption">${this.formatHeightStatus()}</p>
                     </div>
-                </section>
+                </header>
 
                 <section class="dashboard-grid dashboard-grid-controls">
-                    <article class="panel panel-connection">
-                        <div class="panel-head">
-                            <div>
-                                <p class="panel-kicker">Connection</p>
-                                <h2>Desk Link</h2>
-                            </div>
-                        </div>
-                        <p class="panel-body" role="status" aria-live="polite">${this.escapeHtml(this.state.statusMessage)}</p>
-                        <div class="button-row">
-                            <button class="button primary" data-action="connect" aria-label="Connect to desk" ${!supported || !secure || this.state.isConnected ? 'disabled' : ''}>Connect</button>
-                            <button class="button secondary" data-action="disconnect" aria-label="Disconnect from desk" ${this.state.isConnected ? '' : 'disabled'}>Disconnect</button>
-                        </div>
-                        ${supportMessage ? `<p class="support-note">${this.escapeHtml(supportMessage)}</p>` : ''}
-                    </article>
-
-                    <article class="panel panel-motion">
-                        <div class="panel-head">
+                    <article class="panel panel-motion panel-remote">
+                        <div class="panel-head remote-head">
                             <div>
                                 <p class="panel-kicker">Manual Control</p>
-                                <h2>Move</h2>
-                            </div>
-                            <p class="shortcut-hint">Arrow Up / Arrow Down</p>
-                        </div>
-                        <div class="motion-grid">
-                            <button class="control control-up" data-hold="UP" aria-label="Raise desk while pressed" ${this.state.isConnected ? '' : 'disabled'}>
-                                <span>Raise</span>
-                                <strong>UP</strong>
-                            </button>
-                            <button class="control control-down" data-hold="DOWN" aria-label="Lower desk while pressed" ${this.state.isConnected ? '' : 'disabled'}>
-                                <span>Lower</span>
-                                <strong>DOWN</strong>
-                            </button>
-                        </div>
-                    </article>
-
-                    <article class="panel panel-scenes">
-                        <div class="panel-head">
-                            <div>
-                                <p class="panel-kicker">Quick Scenes</p>
-                                <h2>Presets</h2>
+                                <h2>Remote</h2>
                             </div>
                             <button class="button ghost" data-action="customize" aria-haspopup="dialog" aria-expanded="${this.state.isPresetEditorOpen ? 'true' : 'false'}">Labels</button>
                         </div>
-                        <div class="preset-grid">
-                            ${this.presets.map((preset) => this.renderPreset(preset)).join('')}
+                        <div class="remote-connection-row">
+                            <div>
+                                <p class="panel-kicker">Connection</p>
+                                <p class="remote-status" role="status" aria-live="polite">${this.escapeHtml(this.state.statusMessage)}</p>
+                            </div>
+                            <div class="button-row remote-connect-actions">
+                                <button class="button primary" data-action="connect" aria-label="Connect to desk" ${!supported || !secure || this.state.isConnected ? 'disabled' : ''}>Connect</button>
+                                <button class="button secondary" data-action="disconnect" aria-label="Disconnect from desk" ${this.state.isConnected ? '' : 'disabled'}>Disconnect</button>
+                            </div>
                         </div>
+                        ${supportMessage ? `<p class="support-note remote-support-note">${this.escapeHtml(supportMessage)}</p>` : ''}
+                        <div class="remote-face" aria-label="Desk remote layout">
+                            <div class="remote-manual">
+                                <button class="control control-up remote-button" data-hold="UP" aria-label="Raise desk while pressed" ${this.state.isConnected ? '' : 'disabled'}>
+                                    <span>Raise</span>
+                                    <strong>UP</strong>
+                                </button>
+                                <button class="control control-down remote-button" data-hold="DOWN" aria-label="Lower desk while pressed" ${this.state.isConnected ? '' : 'disabled'}>
+                                    <span>Lower</span>
+                                    <strong>DOWN</strong>
+                                </button>
+                            </div>
+                            <div class="remote-height">
+                                <span class="remote-height-label">Height</span>
+                                <strong>${this.state.currentHeight?.toFixed(1) ?? '--'}</strong>
+                                <span>cm</span>
+                            </div>
+                            <div class="remote-presets">
+                                ${this.renderRemotePreset('PRESET1')}
+                                ${this.renderRemotePreset('PRESET2')}
+                                ${this.renderRemotePreset('STANDING')}
+                                ${this.renderRemotePreset('SITTING')}
+                            </div>
+                        </div>
+                        <p class="shortcut-hint remote-shortcuts">Arrow Up / Arrow Down · 1 / 2 / T / S</p>
                     </article>
                 </section>
 
                 <section class="dashboard-grid dashboard-grid-height">
-                    <article class="panel">
-                        <div class="panel-head">
-                            <div>
-                                <p class="panel-kicker">Telemetry</p>
-                                <h2>Recent Samples</h2>
-                            </div>
-                            <p class="shortcut-hint">${this.state.lastHeightSampleAt ? this.formatTime(this.state.lastHeightSampleAt) : 'No signal'}</p>
-                        </div>
-                        <div class="history-list">
-                            ${this.renderHistory()}
-                        </div>
-                    </article>
-
-                    <article class="panel panel-wide">
+                    <article class="panel panel-history">
                         <div class="panel-head">
                             <div>
                                 <p class="panel-kicker">Timeline</p>
@@ -372,76 +337,6 @@ export class FlexiSpotApp {
                                 <dd>${chart.latestLabel}</dd>
                             </div>
                         </div>
-                    </article>
-                </section>
-
-                <section class="dashboard-grid">
-                    <article class="panel">
-                        <div class="panel-head">
-                            <div>
-                                <p class="panel-kicker">Session</p>
-                                <h2>Operational Notes</h2>
-                            </div>
-                        </div>
-                        <dl class="facts">
-                            <div>
-                                <dt>Last Command</dt>
-                                <dd>${this.state.lastCommand ?? 'None'}</dd>
-                            </div>
-                            <div>
-                                <dt>Preset In Flight</dt>
-                                <dd>${this.state.activePreset ?? 'None'}</dd>
-                            </div>
-                            <div>
-                                <dt>Build</dt>
-                                <dd>${BUILD_DATE}</dd>
-                            </div>
-                            <div>
-                                <dt>Theme</dt>
-                                <dd>${this.formatThemeLabel()}</dd>
-                            </div>
-                            <div>
-                                <dt>Command Interval</dt>
-                                <dd>${this.settings.commandIntervalMs} ms</dd>
-                            </div>
-                        </dl>
-                    </article>
-
-                    <article class="panel panel-wide">
-                        <details class="diagnostics-panel">
-                            <summary class="diagnostics-summary">
-                                <div>
-                                    <p class="panel-kicker">Diagnostics</p>
-                                    <h2>Serial RX Monitor</h2>
-                                </div>
-                                <span class="shortcut-hint">${String(this.state.receivedChunkCount)} chunks / ${String(this.state.receivedByteCount)} bytes</span>
-                            </summary>
-                            <div class="diagnostics-content">
-                                <div class="actions-inline">
-                                    <button class="button ghost small" data-action="wake" aria-label="Send wake command" ${this.state.isConnected ? '' : 'disabled'}>Send Wake</button>
-                                    <button class="button ghost small" data-action="pause" aria-pressed="${this.state.capturePaused ? 'true' : 'false'}">${this.state.capturePaused ? 'Resume' : 'Pause'}</button>
-                                    <button class="button ghost small" data-action="copy" aria-label="Copy captured serial data" ${this.state.rawCapture.length > 0 ? '' : 'disabled'}>Copy</button>
-                                    <button class="button ghost small" data-action="clear" aria-label="Clear captured serial data">Clear</button>
-                                </div>
-                                <dl class="facts facts-compact">
-                                    <div>
-                                        <dt>RX Chunks</dt>
-                                        <dd>${String(this.state.receivedChunkCount)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>RX Bytes</dt>
-                                        <dd>${String(this.state.receivedByteCount)}</dd>
-                                    </div>
-                                    <div>
-                                        <dt>Decode State</dt>
-                                        <dd>${this.state.currentHeight === null ? 'No parsed height yet' : 'Height parsed'}</dd>
-                                    </div>
-                                </dl>
-                                <div class="raw-log" role="log" aria-live="polite" aria-label="Serial receive log">
-                                    ${this.renderRawPreview()}
-                                </div>
-                            </div>
-                        </details>
                     </article>
                 </section>
 
@@ -751,6 +646,27 @@ export class FlexiSpotApp {
                 <strong>${preset.id}</strong>
                 <span class="preset-description">${this.escapeHtml(preset.description)}</span>
                 <span class="preset-shortcut">Shortcut ${this.escapeHtml(preset.shortcut)}</span>
+            </button>
+        `;
+    }
+
+    private renderRemotePreset(command: Extract<CommandName, 'PRESET1' | 'PRESET2' | 'SITTING' | 'STANDING'>): string {
+        const preset = this.presets.find((candidate) => candidate.id === command);
+        if (!preset) {
+            return '';
+        }
+
+        const active = this.state.activePreset === preset.id ? 'active' : '';
+        const label = command === 'PRESET1'
+            ? '1'
+            : command === 'PRESET2'
+                ? '2'
+                : command;
+
+        return `
+            <button class="preset-card remote-preset ${preset.accent} ${active}" data-preset="${preset.id}" aria-label="${this.escapeAttribute(preset.label)} ${this.escapeAttribute(command)}" ${this.state.isConnected ? '' : 'disabled'}>
+                <span class="sr-only">${this.escapeHtml(preset.label)}</span>
+                <strong>${this.escapeHtml(label)}</strong>
             </button>
         `;
     }

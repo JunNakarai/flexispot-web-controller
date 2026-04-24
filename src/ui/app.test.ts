@@ -191,7 +191,7 @@ describe('FlexiSpotApp UI', () => {
         expect(window.localStorage.getItem('flexispot-control-deck-settings-v1')).toContain('"theme":"dark"');
     });
 
-    it('ignores shortcuts while typing in the preset editor and clears diagnostics consistently', async () => {
+    it('ignores shortcuts while typing in the preset editor', async () => {
         click('[data-action="connect"]');
         await flush();
 
@@ -201,21 +201,7 @@ describe('FlexiSpotApp UI', () => {
         presetInput?.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyS', bubbles: true }));
 
         expect(fakeSerial.sentCommands).toEqual([]);
-
-        (app as unknown as { patchState: (next: Record<string, unknown>) => void }).patchState({
-            receivedChunkCount: 9,
-            receivedByteCount: 72,
-            rawPreview: ['9b 06 02'],
-            rawCapture: ['9b 06 02']
-        });
-
-        click('[data-action="clear"]');
-
-        expect(fakeSerial.resetDiagnosticsCalls).toBe(1);
-        expect(root.textContent).toContain('RX Chunks');
-        expect(root.textContent).toContain('0');
         expect(document.querySelector('[role="status"]')).not.toBeNull();
-        expect(document.querySelector('[role="log"]')).not.toBeNull();
     });
 
     it('shows Google sign-in controls when Firebase is configured', () => {
